@@ -408,16 +408,25 @@ class TradingCouncil:
         return revised_votes
     
     def get_consensus(self, votes):
-        """Determine final consensus from votes."""
+        """
+        Determine final consensus from votes.
+        
+        STRICT RULES (user requirement):
+        - ALL agents must agree on the same BUY or SELL direction → TRADE
+        - If ANY agent disagrees → NO TRADE (skip)
+        - If all HOLD → NO TRADE (skip)
+        - If split → debate → still split → NO TRADE
+        - Only unanimous BUY or unanimous SELL triggers a trade
+        """
         tally = self.tally_votes(votes)
         counts = tally["counts"]
         total = tally["total"]
         
-        # Strong consensus: majority agrees on direction
+        # Check for unanimous BUY or unanimous SELL
         for direction in ["BUY", "SELL"]:
-            if counts[direction] > total / 2:
-                # Average the entry/SL/TP from agents who voted this direction
-                matching = [v for _, v in votes if v["decision"] == direction]
+            if counts[direction] == total:
+                # UNANIMOUS — all agents agree
+                matching = [v for _, v in votes]
                 avg_entry = sum(v["entry"] for v in matching) / len(matching)
                 avg_sl = sum(v["stop_loss"] for v in matching) / len(matching)
                 avg_tp = sum(v["take_profit"] for v in matching) / len(matching)
@@ -430,27 +439,49 @@ class TradingCouncil:
                     "stop_loss": round(avg_sl, 5),
                     "take_profit": round(avg_tp, 5),
                     "reason": " | ".join(reasons),
-                    "confidence": "HIGH" if tally["is_unanimous"] else "MEDIUM",
+                    "confidence": "UNANIMOUS",
                     "vote_counts": counts,
                     "tally": tally,
                     "debate_happened": self.last_debate is not None,
                 }
         
-        # No consensus → HOLD
+        # NOT unanimous — no trade
+        dissenters = []
+        for agent, vote in votes:
+            if vote["decision"] != "HOLD":
+                dissenters.append(f"{vote['agent_emoji']}{vote['agent_id'].upper()}:{vote['decision']}")
+        
+        reason_parts = []
+        if counts["BUY"] > 0:
+            reason_parts.append(f"BUY×{counts['BUY']}")
+        if counts["SELL"] > 0:
+            reason_parts.append(f"SELL×{counts['SELL']}")
+        if counts["HOLD"] > 0:
+            reason_parts.append(f"HOLD×{counts['HOLD']}")
+        
         return {
             "decision": "HOLD",
             "entry": 0,
             "stop_loss": 0,
             "take_profit": 0,
-            "reason": f"No consensus — Votes: BUY={counts['BUY']} SELL={counts['SELL']} HOLD={counts['HOLD']}",
-            "confidence": "LOW",
+            "reason": f"No unanimous agreement ({' '.join(reason_parts)}) — trade skipped",
+            "confidence": "NONE",
             "vote_counts": counts,
             "tally": tally,
             "debate_happened": self.last_debate is not None,
         }
     
     def decide(self, window_data, current_price):
-        """Full council decision flow: vote → (debate if split) → consensus."""
+        """
+        Full council decision flow.
+        
+        STRICT FLOW:
+        1. All agents vote independently
+        2. If unanimous on BUY/SELL → TRADE immediately
+        3. If NOT unanimous → debate → re-vote
+        4. After debate: unanimous → TRADE
+        5. After debate: still not unanimous → SKIP (no trade)
+        """
         self.last_debate = None
         
         self.log("🏛️  COUNCIL SESSION STARTED", "council")
@@ -462,37 +493,34 @@ class TradingCouncil:
         
         self.log(
             f"📊 Votes: BUY={tally['counts']['BUY']} SELL={tally['counts']['SELL']} "
-            f"HOLD={tally['counts']['HOLD']} | Majority: {tally['majority_dir']} ({tally['majority_pct']}%)",
+            f"HOLD={tally['counts']['HOLD']}",
             "council"
         )
         
-        # Step 2: If split, run debate
-        if tally["is_split"] and self.debate_rounds > 0:
-            self.log("🗣️  Vote is SPLIT — Starting debate...", "council")
+        # Step 2: Check if unanimous
+        if tally["is_unanimous"] and tally["majority_dir"] in ["BUY", "SELL"]:
+            self.log(f"✅ UNANIMOUS {tally['majority_dir']} — Trade approved!", "council")
+            return self.get_consensus(votes)
+        
+        # Step 3: Not unanimous → debate
+        self.log("🗣️  Not unanimous — Starting debate...", "council")
+        
+        for round_num in range(self.debate_rounds):
+            self.log(f"🔄 Debate round {round_num + 1}/{self.debate_rounds}", "council")
+            votes = self.run_debate(votes, window_data, current_price)
+            tally = self.tally_votes(votes)
             
-            for round_num in range(self.debate_rounds):
-                self.log(f"🔄 Debate round {round_num + 1}/{self.debate_rounds}", "council")
-                votes = self.run_debate(votes, window_data, current_price)
-                tally = self.tally_votes(votes)
-                
-                self.log(
-                    f"📊 After debate: BUY={tally['counts']['BUY']} SELL={tally['counts']['SELL']} "
-                    f"HOLD={tally['counts']['HOLD']}",
-                    "council"
-                )
-                
-                # If consensus reached, stop debating
-                if not tally["is_split"]:
-                    self.log("✅ Consensus reached!", "council")
-                    break
+            self.log(
+                f"📊 After debate: BUY={tally['counts']['BUY']} SELL={tally['counts']['SELL']} "
+                f"HOLD={tally['counts']['HOLD']}",
+                "council"
+            )
+            
+            # Check if unanimous after debate
+            if tally["is_unanimous"] and tally["majority_dir"] in ["BUY", "SELL"]:
+                self.log(f"✅ UNANIMOUS after debate: {tally['majority_dir']} — Trade approved!", "council")
+                return self.get_consensus(votes)
         
-        # Step 3: Final consensus
-        consensus = self.get_consensus(votes)
-        
-        self.log(
-            f"🏛️  FINAL: {consensus['decision']} | Confidence: {consensus['confidence']} | "
-            f"Votes: {consensus['vote_counts']}",
-            "council"
-        )
-        
-        return consensus
+        # Step 4: Still not unanimous → no trade
+        self.log("❌ No unanimous consensus — Trade SKIPPED", "council")
+        return self.get_consensus(votes)
