@@ -148,7 +148,6 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
       <select id="dataFile">
         <option value="">Loading files...</option>
       </select>
-      <button class="btn btn-sm btn-primary" style="margin-top:6px;width:100%" onclick="downloadData()">⬇ Download Data from HuggingFace</button>
       <div id="dataStatus" style="font-size:11px;color:#666;margin-top:4px"></div>
     </div>
     
@@ -329,28 +328,7 @@ function loadDataFiles() {
   });
 }
 
-function downloadData() {
-  const status = document.getElementById("dataStatus");
-  status.textContent = "⬇ Downloading from HuggingFace...";
-  status.style.color = "#ff9800";
-  
-  fetch("/api/data/download", {method: "POST"})
-    .then(r => r.json())
-    .then(data => {
-      if (data.count > 0) {
-        status.textContent = `✅ Downloaded ${data.count} file(s)!`;
-        status.style.color = "#4caf50";
-        loadDataFiles();
-      } else {
-        status.textContent = "❌ Download failed. Check HF_TOKEN in Space settings.";
-        status.style.color = "#f44336";
-      }
-    })
-    .catch(err => {
-      status.textContent = "❌ Error: " + err;
-      status.style.color = "#f44336";
-    });
-}
+
 
 function saveApiKey() {
   const key = document.getElementById("apiKey").value.trim();

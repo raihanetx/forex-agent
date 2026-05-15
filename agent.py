@@ -14,7 +14,6 @@ import os
 import time
 from datetime import datetime
 from council import TradingCouncil
-from huggingface_hub import hf_hub_download
 
 
 class Trade:

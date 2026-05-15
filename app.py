@@ -9,7 +9,6 @@ import json
 import os
 from config import load_config, save_config, fetch_free_models
 from agent import TradingAgent
-from huggingface_hub import hf_hub_download
 
 app = Flask(__name__)
 
@@ -18,59 +17,7 @@ agent = None
 log_buffer = []  # Stores recent log messages for polling
 config = load_config()
 
-# Download data files from HuggingFace on startup
-DATA_REPO = "Raihan1234/forex-agent-data"
-DATA_FILES = ["EURUSD_M1_February_2026.parquet", "EURUSD_M1_March_2026.parquet"]
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-os.makedirs(DATA_DIR, exist_ok=True)
-
-def download_data():
-    """Download parquet data files from HuggingFace dataset."""
-    # Try to find a valid HF token
-    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
-    if hf_token:
-        print(f"  🔑 HF token found ({hf_token[:8]}...)")
-    else:
-        print("  🔑 No HF token found — dataset is public, downloading without auth")
-    
-    for fname in DATA_FILES:
-        fpath = os.path.join(DATA_DIR, fname)
-        if os.path.exists(fpath):
-            print(f"  ✅ Already exists: {fname}")
-            continue
-        
-        # Try with token first, then without
-        attempts = [
-            ("with token", hf_token if hf_token else True),
-            ("without token", None),
-        ]
-        
-        for attempt_name, token_val in attempts:
-            try:
-                print(f"  ⬇ Downloading {fname} ({attempt_name})...")
-                hf_hub_download(
-                    repo_id=DATA_REPO,
-                    repo_type="dataset",
-                    filename=fname,
-                    local_dir=DATA_DIR,
-                    token=token_val,
-                )
-                print(f"  ✅ Downloaded: {fname}")
-                break
-            except Exception as e:
-                print(f"  ⚠ {attempt_name} failed: {type(e).__name__}: {e}")
-        else:
-            print(f"  ❌ All attempts failed for {fname}")
-    
-    # Verify files
-    downloaded = [f for f in os.listdir(DATA_DIR) if f.endswith(".parquet")]
-    print(f"  📂 Data directory contents: {downloaded}")
-    if not downloaded:
-        print("  ⚠⚠⚠ WARNING: No data files available! Backtest will not work.")
-        print("  💡 Fix: Set HF_TOKEN in Space settings, or upload parquet files manually")
-
-print("📥 Downloading data files...")
-download_data()
 
 
 def log_callback(msg, level="info"):
@@ -129,17 +76,7 @@ def list_data_files():
     return jsonify({"files": files})
 
 
-@app.route("/api/data/download", methods=["POST"])
-def redownload_data():
-    """Trigger re-download of data files from HuggingFace."""
-    download_data()
-    files = []
-    if os.path.exists(DATA_DIR):
-        for f in os.listdir(DATA_DIR):
-            if f.endswith(".parquet"):
-                size = os.path.getsize(os.path.join(DATA_DIR, f))
-                files.append({"name": f, "size_kb": round(size / 1024, 1)})
-    return jsonify({"files": files, "count": len(files)})
+
 
 
 @app.route("/api/start", methods=["POST"])
