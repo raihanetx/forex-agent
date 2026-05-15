@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Forex Trading Agent</title>
+<title>Forex Trading Agent — Council Mode</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
@@ -21,6 +21,7 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 /* LEFT PANEL — Settings */
 .panel-left { background: #111118; border-right: 1px solid #2a2a4a; padding: 16px; overflow-y: auto; }
 .panel-left h2 { font-size: 13px; color: #888; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 1px; }
+.section-divider { border: none; border-top: 1px solid #2a2a4a; margin: 16px 0 12px; }
 .field { margin-bottom: 14px; }
 .field label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
 .field input, .field select { width: 100%; background: #1a1a24; border: 1px solid #2a2a4a; color: #e0e0e0; padding: 8px 10px; border-radius: 6px; font-size: 13px; }
@@ -34,6 +35,16 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 .btn-sm { padding: 5px 10px; font-size: 11px; }
 .btn-group { display: flex; gap: 6px; margin-top: 10px; }
 .btn-full { width: 100%; }
+
+/* Toggle switch */
+.toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.toggle-row label { margin: 0; }
+.toggle { position: relative; width: 44px; height: 22px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle .slider { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #333; border-radius: 22px; cursor: pointer; transition: 0.3s; }
+.toggle .slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px; background: #888; border-radius: 50%; transition: 0.3s; }
+.toggle input:checked + .slider { background: #0a3d4d; }
+.toggle input:checked + .slider:before { transform: translateX(22px); background: #00d4ff; }
 
 /* CENTER — Live Feed */
 .panel-center { display: flex; flex-direction: column; overflow: hidden; }
@@ -49,6 +60,9 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 .log-system { color: #4fc3f7; }
 .log-error { color: #ef5350; }
 .log-model { color: #666; font-style: italic; }
+.log-council { color: #bb86fc; font-weight: 600; background: #1a0a2e; padding: 4px 8px; border-radius: 4px; margin: 4px 0; border-left: 3px solid #bb86fc; }
+.log-agent_vote { color: #80cbc4; padding: 2px 0 2px 12px; }
+.log-debate { color: #ffab40; background: #2a1a00; padding: 4px 8px; border-radius: 4px; margin: 4px 0; }
 
 /* RIGHT PANEL — Stats & Trades */
 .panel-right { background: #111118; border-left: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow: hidden; }
@@ -58,6 +72,19 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 .stat-card .label { font-size: 10px; color: #666; text-transform: uppercase; margin-top: 2px; }
 .stat-win .value { color: #4caf50; }
 .stat-loss .value { color: #f44336; }
+
+/* Council votes panel */
+.council-panel { background: #111118; border: 1px solid #2a2a4a; border-radius: 8px; padding: 12px; margin: 0 12px 8px; }
+.council-panel h3 { font-size: 12px; color: #bb86fc; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+.vote-bar { display: flex; gap: 6px; margin-bottom: 8px; }
+.vote-pill { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+.vote-buy { background: #0a3d0a; color: #4caf50; }
+.vote-sell { background: #3d0a0a; color: #f44336; }
+.vote-hold { background: #3d3d0a; color: #ffeb3b; }
+.confidence-badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 600; margin-left: 8px; }
+.conf-high { background: #0a3d0a; color: #4caf50; }
+.conf-medium { background: #3d3d0a; color: #ffeb3b; }
+.conf-low { background: #3d0a0a; color: #f44336; }
 
 .active-trade { background: #1a2a1a; border: 1px solid #4caf50; border-radius: 8px; padding: 12px; margin: 0 12px 8px; }
 .active-trade h3 { font-size: 12px; color: #4caf50; margin-bottom: 6px; }
@@ -92,6 +119,7 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 <div class="header">
   <h1>⚡ Forex LLM Trading Agent</h1>
   <div>
+    <span id="modeBadge" class="status-badge" style="background:#1a0a2e;color:#bb86fc;margin-right:8px">COUNCIL</span>
     <span id="statusBadge" class="status-badge badge-idle">IDLE</span>
   </div>
 </div>
@@ -139,6 +167,36 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
       <input type="number" id="speed" value="0.5" min="0" max="10" step="0.1">
     </div>
     
+    <hr class="section-divider">
+    <h2>🏛️ Council Mode</h2>
+    
+    <div class="toggle-row">
+      <label style="margin:0">Multi-Agent Council</label>
+      <div class="toggle">
+        <input type="checkbox" id="useCouncil" checked>
+        <span class="slider"></span>
+      </div>
+    </div>
+    
+    <div id="councilSettings">
+      <div class="field">
+        <label>Number of Agents</label>
+        <select id="numAgents">
+          <option value="3">3 Agents (majority = 2)</option>
+          <option value="5">5 Agents (majority = 3)</option>
+        </select>
+      </div>
+      
+      <div class="field">
+        <label>Debate Rounds (when split)</label>
+        <select id="debateRounds">
+          <option value="0">No debate — skip split votes</option>
+          <option value="1" selected>1 round — argue once</option>
+          <option value="2">2 rounds — deep debate</option>
+        </select>
+      </div>
+    </div>
+    
     <div class="btn-group">
       <button class="btn btn-success btn-full" id="btnStart" onclick="startAgent()">▶ Start</button>
       <button class="btn btn-warning" id="btnPause" onclick="pauseAgent()" disabled>⏸</button>
@@ -152,7 +210,7 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
   <div class="panel-center">
     <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
     <div class="live-feed" id="liveFeed">
-      <div class="log-entry log-system">Welcome to Forex LLM Trading Agent. Configure settings and press Start.</div>
+      <div class="log-entry log-system">Welcome to Forex LLM Trading Agent — Council Mode. Configure settings and press Start.</div>
     </div>
   </div>
 
@@ -165,6 +223,13 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
       <div class="stat-card"><div class="value" id="statWinRate">0%</div><div class="label">Win Rate</div></div>
       <div class="stat-card"><div class="value" id="statPips">0</div><div class="label">Total Pips</div></div>
       <div class="stat-card"><div class="value" id="statAvg">0</div><div class="label">Avg Pips</div></div>
+    </div>
+    
+    <!-- Council Votes Panel -->
+    <div id="councilPanel" class="council-panel" style="display:none">
+      <h3>🏛️ Council Votes <span id="confidenceBadge" class="confidence-badge"></span></h3>
+      <div id="voteBar" class="vote-bar"></div>
+      <div id="councilDecision" style="font-size:11px;color:#aaa;margin-top:4px"></div>
     </div>
     
     <div id="activeTradeSection" class="active-trade" style="display:none">
@@ -188,8 +253,58 @@ fetch("/api/config").then(r => r.json()).then(cfg => {
   document.getElementById("apiKey").value = cfg.api_key || "";
   document.getElementById("windowSize").value = cfg.window_size || 20;
   currentModel = cfg.model || "kilo-auto/free";
+  
+  // Council settings
+  if (cfg.use_council !== undefined) document.getElementById("useCouncil").checked = cfg.use_council;
+  if (cfg.num_agents) document.getElementById("numAgents").value = cfg.num_agents;
+  if (cfg.debate_rounds !== undefined) document.getElementById("debateRounds").value = cfg.debate_rounds;
+  
+  updateModeBadge();
   loadDataFiles();
 });
+
+// Council toggle
+document.getElementById("useCouncil").addEventListener("change", function() {
+  document.getElementById("councilSettings").style.display = this.checked ? "block" : "none";
+  updateModeBadge();
+  fetch("/api/config", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({use_council: this.checked})
+  });
+});
+
+// Num agents change
+document.getElementById("numAgents").addEventListener("change", function() {
+  fetch("/api/config", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({num_agents: parseInt(this.value)})
+  });
+});
+
+// Debate rounds change
+document.getElementById("debateRounds").addEventListener("change", function() {
+  fetch("/api/config", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({debate_rounds: parseInt(this.value)})
+  });
+});
+
+function updateModeBadge() {
+  const badge = document.getElementById("modeBadge");
+  const useCouncil = document.getElementById("useCouncil").checked;
+  if (useCouncil) {
+    const n = document.getElementById("numAgents").value;
+    badge.textContent = `COUNCIL (${n})`;
+    badge.style.display = "inline";
+  } else {
+    badge.textContent = "SINGLE";
+    badge.style.background = "#333";
+    badge.style.color = "#888";
+  }
+}
 
 function loadDataFiles() {
   fetch("/api/data/files").then(r => r.json()).then(data => {
@@ -247,7 +362,6 @@ function saveApiKey() {
     body: JSON.stringify({api_key: key})
   });
   
-  // Fetch free models
   document.getElementById("modelLoading").style.display = "block";
   fetch("/api/models", {
     method: "POST",
@@ -291,16 +405,22 @@ function startAgent() {
   const maxCandles = document.getElementById("maxCandles").value;
   const speed = document.getElementById("speed").value;
   const windowSize = document.getElementById("windowSize").value;
+  const useCouncil = document.getElementById("useCouncil").checked;
+  const numAgents = document.getElementById("numAgents").value;
+  const debateRounds = document.getElementById("debateRounds").value;
   
   if (!dataFile) return alert("Select a data file");
   
-  // Update config
+  // Update config first
   fetch("/api/config", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
       model: currentModel,
       window_size: parseInt(windowSize),
+      use_council: useCouncil,
+      num_agents: parseInt(numAgents),
+      debate_rounds: parseInt(debateRounds),
     })
   });
   
@@ -318,17 +438,13 @@ function startAgent() {
   });
 }
 
-function pauseAgent() {
-  fetch("/api/pause", {method: "POST"});
-}
-
+function pauseAgent() { fetch("/api/pause", {method: "POST"}); }
 function stopAgent() {
   fetch("/api/stop", {method: "POST"}).then(() => {
     setRunning(false);
     stopPolling();
   });
 }
-
 function saveTrades() {
   fetch("/api/save", {method: "POST"}).then(r => r.json()).then(data => {
     if (data.error) alert(data.error);
@@ -357,21 +473,18 @@ function startPolling() {
 }
 
 function stopPolling() {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-  }
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
 }
 
 function pollStatus() {
   fetch("/api/status").then(r => r.json()).then(data => {
-    // Update progress
+    // Progress
     if (data.total_candles > 0) {
       const pct = (data.candle_index / data.total_candles * 100).toFixed(1);
       document.getElementById("progressFill").style.width = pct + "%";
     }
     
-    // Update stats
+    // Stats
     if (data.stats) {
       document.getElementById("statTotal").textContent = data.stats.total_trades;
       document.getElementById("statWins").textContent = data.stats.wins;
@@ -379,6 +492,33 @@ function pollStatus() {
       document.getElementById("statWinRate").textContent = data.stats.win_rate + "%";
       document.getElementById("statPips").textContent = data.stats.total_pips;
       document.getElementById("statAvg").textContent = data.stats.avg_pips;
+    }
+    
+    // Council votes panel
+    const councilPanel = document.getElementById("councilPanel");
+    if (data.council_info && data.use_council) {
+      councilPanel.style.display = "block";
+      const info = data.council_info;
+      const votes = info.votes || {};
+      
+      // Build vote bar
+      let barHtml = '';
+      if (votes.BUY > 0) barHtml += `<span class="vote-pill vote-buy">BUY ×${votes.BUY}</span>`;
+      if (votes.SELL > 0) barHtml += `<span class="vote-pill vote-sell">SELL ×${votes.SELL}</span>`;
+      if (votes.HOLD > 0) barHtml += `<span class="vote-pill vote-hold">HOLD ×${votes.HOLD}</span>`;
+      document.getElementById("voteBar").innerHTML = barHtml;
+      
+      // Confidence
+      const confBadge = document.getElementById("confidenceBadge");
+      confBadge.textContent = info.confidence || "";
+      confBadge.className = "confidence-badge conf-" + (info.confidence || "").toLowerCase();
+      
+      // Decision
+      let decisionText = `Final: ${info.decision}`;
+      if (info.debate_happened) decisionText += " (after debate)";
+      document.getElementById("councilDecision").textContent = decisionText;
+    } else {
+      councilPanel.style.display = "none";
     }
     
     // Active trade
@@ -416,7 +556,6 @@ function pollStatus() {
       const wasAtBottom = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50;
       
       data.logs.forEach(log => {
-        // Avoid duplicates
         const existing = feed.querySelectorAll(".log-entry");
         const lastMsg = existing.length > 0 ? existing[existing.length - 1].textContent : "";
         if (log.msg !== lastMsg.replace(/^\[.*?\]\s*/, "")) {
@@ -427,11 +566,7 @@ function pollStatus() {
         }
       });
       
-      // Trim old entries
-      while (feed.children.length > 300) {
-        feed.removeChild(feed.firstChild);
-      }
-      
+      while (feed.children.length > 300) feed.removeChild(feed.firstChild);
       if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
     }
     

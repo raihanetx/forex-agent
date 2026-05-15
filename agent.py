@@ -1,7 +1,7 @@
 """
 Trading Agent — Core Logic
 - Reads parquet data candle by candle
-- Sends window of candles to LLM
+- Sends window of candles to LLM (single agent OR multi-agent council)
 - Parses BUY/SELL/HOLD decisions
 - Tracks active trade until SL or TP hit
 - Logs all trades with outcomes
@@ -13,6 +13,7 @@ import json
 import os
 import time
 from datetime import datetime
+from council import TradingCouncil
 from huggingface_hub import hf_hub_download
 
 
@@ -95,6 +96,14 @@ class TradingAgent:
         self.is_paused = False
         self.log_callback = None   # Function to call for live logging
         self.speed = 0.5           # Seconds between candles
+        self.last_council_result = None  # Store last council decision details
+        
+        # Multi-agent council mode
+        self.use_council = config.get("use_council", False)
+        if self.use_council:
+            self.council = TradingCouncil(config)
+        else:
+            self.council = None
     
     def load_data(self, filepath):
         """Load parquet file."""
@@ -107,6 +116,8 @@ class TradingAgent:
     def set_log_callback(self, callback):
         """Set function to receive live log updates."""
         self.log_callback = callback
+        if self.council:
+            self.council.set_log_callback(callback)
     
     def log(self, msg, level="info"):
         """Send log to callback if set."""
@@ -321,19 +332,35 @@ class TradingAgent:
             
             self.log(f"📊 Candle #{self.current_index} | {timestamp} | Price: {row['close']:.5f}", "info")
             
-            prompt = self.build_prompt(window, row["close"])
-            llm_response = self.call_llm(prompt)
-            decision = self.parse_decision(llm_response)
+            if self.use_council and self.council:
+                # ── Multi-Agent Council Mode ──
+                consensus = self.council.decide(window, row["close"])
+                self.last_council_result = consensus
+                decision = consensus
+                
+                self.log(
+                    f"🏛️  Council: {consensus['decision']} | Confidence: {consensus['confidence']} | "
+                    f"Votes: {consensus['vote_counts']}",
+                    "decision"
+                )
+                if consensus.get("reason"):
+                    self.log(f"📋 Reason: {consensus['reason'][:200]}", "decision")
+            else:
+                # ── Single Agent Mode ──
+                prompt = self.build_prompt(window, row["close"])
+                llm_response = self.call_llm(prompt)
+                decision = self.parse_decision(llm_response)
+                
+                if decision:
+                    self.log(f"🧠 Model: {decision.get('model', 'unknown')}", "model")
+                    if decision.get("reasoning"):
+                        self.log(f"💭 Thinking: {decision['reasoning'][:300]}", "thinking")
+                    self.log(f"📋 Decision: {decision['decision']} | Reason: {decision['reason']}", "decision")
             
             if decision:
                 result["llm_call"] = decision
                 
-                self.log(f"🧠 Model: {decision.get('model', 'unknown')}", "model")
-                if decision.get("reasoning"):
-                    self.log(f"💭 Thinking: {decision['reasoning'][:300]}", "thinking")
-                self.log(f"📋 Decision: {decision['decision']} | Reason: {decision['reason']}", "decision")
-                
-                if decision["decision"] in ["BUY", "SELL"] and decision["entry"] > 0:
+                if decision["decision"] in ["BUY", "SELL"] and decision.get("entry", 0) > 0:
                     self.trade_counter += 1
                     trade = Trade(
                         trade_id=self.trade_counter,
@@ -343,7 +370,7 @@ class TradingAgent:
                         take_profit=decision["take_profit"],
                         timestamp=timestamp,
                         candle_index=self.current_index,
-                        reason=decision["reason"],
+                        reason=decision.get("reason", ""),
                     )
                     self.active_trade = trade
                     self.trades.append(trade)
@@ -409,7 +436,7 @@ class TradingAgent:
         losses = [t for t in closed if t.result == "LOSS"]
         total_pips = sum(t.pips for t in closed)
         
-        return {
+        stats = {
             "total_trades": len(closed),
             "wins": len(wins),
             "losses": len(losses),
@@ -420,7 +447,14 @@ class TradingAgent:
             "worst_trade": round(min((t.pips for t in closed), default=0), 1),
             "candles_processed": self.current_index,
             "total_candles": len(self.df),
+            "use_council": self.use_council,
         }
+        
+        if self.use_council and self.last_council_result:
+            stats["council_votes"] = self.last_council_result.get("vote_counts", {})
+            stats["council_confidence"] = self.last_council_result.get("confidence", "N/A")
+        
+        return stats
     
     def get_trades_list(self):
         """Return all trades as list of dicts."""

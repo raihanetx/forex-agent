@@ -216,6 +216,8 @@ def get_status():
         "candle_index": 0,
         "total_candles": 0,
         "logs": log_buffer[-50:],  # Last 50 messages
+        "use_council": config.get("use_council", False),
+        "council_info": None,
     }
     
     if agent:
@@ -225,9 +227,19 @@ def get_status():
         result["total_candles"] = len(agent.df) if agent.df is not None else 0
         result["stats"] = agent.get_stats()
         result["trades"] = agent.get_trades_list()
+        result["use_council"] = agent.use_council
         
         if agent.active_trade:
             result["active_trade"] = agent.active_trade.to_dict()
+        
+        # Include last council decision details
+        if agent.use_council and agent.last_council_result:
+            result["council_info"] = {
+                "votes": agent.last_council_result.get("vote_counts", {}),
+                "confidence": agent.last_council_result.get("confidence", "N/A"),
+                "decision": agent.last_council_result.get("decision", "N/A"),
+                "debate_happened": agent.last_council_result.get("debate_happened", False),
+            }
     
     return jsonify(result)
 

@@ -20,6 +20,11 @@ DEFAULT_CONFIG = {
     "data_file": "",  # will be set dynamically
     "temperature": 0.3,
     "max_tokens": 800,
+    # Multi-agent council settings
+    "use_council": False,
+    "num_agents": 3,           # 3 or 5 agents
+    "debate_rounds": 1,        # Number of debate rounds when split
+    "consensus_threshold": 0.6, # 60% agreement needed
 }
 
 
