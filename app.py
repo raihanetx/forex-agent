@@ -39,15 +39,22 @@ def ensure_data():
     
     hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
     for fname in missing:
-        try:
-            print(f"  ⬇ Downloading {fname}...")
-            hf_hub_download(
-                repo_id=DATA_REPO, repo_type="dataset", filename=fname,
-                local_dir=DATA_DIR, token=hf_token or True,
-            )
-            print(f"  ✅ Downloaded: {fname}")
-        except Exception as e:
-            print(f"  ❌ Failed to download {fname}: {e}")
+        downloaded = False
+        # Try with token first, then without (public dataset)
+        for token_val in ([hf_token, None] if hf_token else [None]):
+            try:
+                print(f"  ⬇ Downloading {fname} ({'with token' if token_val else 'no auth'})...")
+                hf_hub_download(
+                    repo_id=DATA_REPO, repo_type="dataset", filename=fname,
+                    local_dir=DATA_DIR, token=token_val,
+                )
+                print(f"  ✅ Downloaded: {fname}")
+                downloaded = True
+                break
+            except Exception as e:
+                print(f"  ⚠ Attempt failed: {e}")
+        if not downloaded:
+            print(f"  ❌ All attempts failed for {fname}")
 
 print("📥 Checking data files...")
 ensure_data()
