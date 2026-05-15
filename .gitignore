@@ -6,4 +6,6 @@ config.json
 results/
 *.csv
 .DS_Store
+data/
+*.parquet
 

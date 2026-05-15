@@ -18,6 +18,39 @@ log_buffer = []  # Stores recent log messages for polling
 config = load_config()
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Auto-download data from HuggingFace if not present locally
+DATA_REPO = "Raihan1234/forex-agent-data"
+DATA_FILES = ["EURUSD_M1_February_2026.parquet", "EURUSD_M1_March_2026.parquet"]
+
+def ensure_data():
+    """Download parquet files from HF dataset if not already present."""
+    missing = [f for f in DATA_FILES if not os.path.exists(os.path.join(DATA_DIR, f))]
+    if not missing:
+        print(f"  ✅ All data files present locally")
+        return
+    
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError:
+        print(f"  ⚠ huggingface_hub not installed, cannot download {missing}")
+        return
+    
+    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    for fname in missing:
+        try:
+            print(f"  ⬇ Downloading {fname}...")
+            hf_hub_download(
+                repo_id=DATA_REPO, repo_type="dataset", filename=fname,
+                local_dir=DATA_DIR, token=hf_token or True,
+            )
+            print(f"  ✅ Downloaded: {fname}")
+        except Exception as e:
+            print(f"  ❌ Failed to download {fname}: {e}")
+
+print("📥 Checking data files...")
+ensure_data()
 
 
 def log_callback(msg, level="info"):
@@ -76,7 +109,17 @@ def list_data_files():
     return jsonify({"files": files})
 
 
-
+@app.route("/api/data/download", methods=["POST"])
+def redownload_data():
+    """Trigger re-download of data files from HuggingFace."""
+    ensure_data()
+    files = []
+    if os.path.exists(DATA_DIR):
+        for f in os.listdir(DATA_DIR):
+            if f.endswith(".parquet"):
+                size = os.path.getsize(os.path.join(DATA_DIR, f))
+                files.append({"name": f, "size_kb": round(size / 1024, 1)})
+    return jsonify({"files": files, "count": len(files)})
 
 
 @app.route("/api/start", methods=["POST"])
