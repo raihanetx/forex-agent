@@ -328,12 +328,19 @@ class TradingCouncil:
             
             statements.append((agent, parsed))
             
+            # Log the full opening statement to the live feed
+            self.log(f"  {agent['emoji']} {agent['name']}:", "agent_vote")
+            if response and response.get("reasoning"):
+                self.log(f"  💭 {response['reasoning'][:300]}", "thinking")
+            for line in parsed.get("raw", "").split("\n"):
+                line = line.strip()
+                if line:
+                    self.log(f"  {agent['emoji']} {line}", "agent_vote")
             self.log(
-                f"  {agent['emoji']} {agent['id'].upper()}: {parsed['decision']} — {parsed['reason'][:100]}",
-                "agent_vote"
+                f"  {agent['emoji']} → {parsed['decision']} | Entry: {parsed['entry']} | "
+                f"SL: {parsed['stop_loss']} | TP: {parsed['take_profit']}",
+                "decision"
             )
-            if parsed.get("reasoning"):
-                self.log(f"  💭 {agent['id'].upper()} reasoning: {parsed['reasoning'][:200]}", "thinking")
         
         return statements
     
@@ -380,6 +387,13 @@ class TradingCouncil:
                 content = response["content"]
                 discussion_log.append(f"\n{agent['emoji']} {agent['name']}:")
                 discussion_log.append(content[:500])
+                
+                # Log the ACTUAL discussion content to the live feed
+                # Split into readable chunks
+                for line in content.split("\n"):
+                    line = line.strip()
+                    if line:
+                        self.log(f"  {agent['emoji']} {agent['id'].upper()}: {line}", "debate")
                 
                 # Parse final vote from discussion
                 revised = self.parse_position(content)
