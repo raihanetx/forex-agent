@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forex Trading Agent</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
+
+.header { background: linear-gradient(135deg, #1a1a2e, #16213e); padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2a2a4a; }
+.header h1 { font-size: 20px; color: #00d4ff; }
+.header .status-badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.badge-idle { background: #333; color: #888; }
+.badge-running { background: #0a3d0a; color: #4caf50; animation: pulse 1.5s infinite; }
+.badge-paused { background: #3d3d0a; color: #ffeb3b; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+.container { display: grid; grid-template-columns: 300px 1fr 320px; gap: 0; height: calc(100vh - 56px); }
+
+/* LEFT PANEL — Settings */
+.panel-left { background: #111118; border-right: 1px solid #2a2a4a; padding: 16px; overflow-y: auto; }
+.panel-left h2 { font-size: 13px; color: #888; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 1px; }
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.field input, .field select { width: 100%; background: #1a1a24; border: 1px solid #2a2a4a; color: #e0e0e0; padding: 8px 10px; border-radius: 6px; font-size: 13px; }
+.field input:focus, .field select:focus { outline: none; border-color: #00d4ff; }
+.btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
+.btn-primary { background: #00d4ff; color: #000; }
+.btn-primary:hover { background: #00b8d4; }
+.btn-success { background: #4caf50; color: #fff; }
+.btn-warning { background: #ff9800; color: #000; }
+.btn-danger { background: #f44336; color: #fff; }
+.btn-sm { padding: 5px 10px; font-size: 11px; }
+.btn-group { display: flex; gap: 6px; margin-top: 10px; }
+.btn-full { width: 100%; }
+
+/* CENTER — Live Feed */
+.panel-center { display: flex; flex-direction: column; overflow: hidden; }
+.progress-bar { height: 3px; background: #1a1a24; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #00d4ff, #4caf50); transition: width 0.3s; }
+
+.live-feed { flex: 1; overflow-y: auto; padding: 12px 16px; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; line-height: 1.6; }
+.log-entry { padding: 2px 0; border-bottom: 1px solid #1a1a24; }
+.log-info { color: #888; }
+.log-thinking { color: #ce93d8; background: #1a0a24; padding: 4px 8px; border-radius: 4px; margin: 4px 0; }
+.log-decision { color: #80cbc4; font-weight: 600; }
+.log-trade { color: #ffd54f; font-weight: 700; background: #2a2a0a; padding: 4px 8px; border-radius: 4px; margin: 4px 0; }
+.log-system { color: #4fc3f7; }
+.log-error { color: #ef5350; }
+.log-model { color: #666; font-style: italic; }
+
+/* RIGHT PANEL — Stats & Trades */
+.panel-right { background: #111118; border-left: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow: hidden; }
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; }
+.stat-card { background: #1a1a24; padding: 10px; border-radius: 8px; text-align: center; }
+.stat-card .value { font-size: 20px; font-weight: 700; color: #00d4ff; }
+.stat-card .label { font-size: 10px; color: #666; text-transform: uppercase; margin-top: 2px; }
+.stat-win .value { color: #4caf50; }
+.stat-loss .value { color: #f44336; }
+
+.active-trade { background: #1a2a1a; border: 1px solid #4caf50; border-radius: 8px; padding: 12px; margin: 0 12px 8px; }
+.active-trade h3 { font-size: 12px; color: #4caf50; margin-bottom: 6px; }
+.active-trade .detail { font-size: 11px; color: #aaa; }
+
+.trades-list { flex: 1; overflow-y: auto; padding: 0 12px 12px; }
+.trades-list h3 { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px; }
+.trade-row { background: #1a1a24; padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+.trade-row.win { border-left: 3px solid #4caf50; }
+.trade-row.loss { border-left: 3px solid #f44336; }
+.trade-row.open { border-left: 3px solid #ff9800; }
+.trade-dir { font-weight: 700; }
+.trade-dir.buy { color: #4caf50; }
+.trade-dir.sell { color: #f44336; }
+.trade-pips.win { color: #4caf50; }
+.trade-pips.loss { color: #f44336; }
+
+/* Model selector */
+.model-list { max-height: 120px; overflow-y: auto; background: #1a1a24; border-radius: 6px; padding: 6px; margin-top: 6px; }
+.model-item { padding: 4px 8px; font-size: 11px; cursor: pointer; border-radius: 4px; color: #aaa; }
+.model-item:hover { background: #2a2a3a; color: #fff; }
+.model-item.selected { background: #0a3d4d; color: #00d4ff; }
+
+/* Responsive */
+@media (max-width: 900px) {
+  .container { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⚡ Forex LLM Trading Agent</h1>
+  <div>
+    <span id="statusBadge" class="status-badge badge-idle">IDLE</span>
+  </div>
+</div>
+
+<div class="container">
+  <!-- LEFT: Settings -->
+  <div class="panel-left">
+    <h2>⚙️ Settings</h2>
+    
+    <div class="field">
+      <label>Kilo Gateway API Key</label>
+      <input type="password" id="apiKey" placeholder="Enter API key...">
+      <button class="btn btn-sm btn-primary" style="margin-top:6px;width:100%" onclick="saveApiKey()">Save & Fetch Models</button>
+    </div>
+    
+    <div class="field">
+      <label>LLM Model (Free Only)</label>
+      <div id="modelList" class="model-list">
+        <div class="model-item selected" data-model="kilo-auto/free">kilo-auto/free (default)</div>
+      </div>
+      <div id="modelLoading" style="font-size:11px;color:#666;margin-top:4px;display:none">Loading models...</div>
+    </div>
+    
+    <div class="field">
+      <label>Data File</label>
+      <select id="dataFile">
+        <option value="">Loading files...</option>
+      </select>
+    </div>
+    
+    <div class="field">
+      <label>Window Size (candles)</label>
+      <input type="number" id="windowSize" value="20" min="5" max="100">
+    </div>
+    
+    <div class="field">
+      <label>Max Candles (blank = all)</label>
+      <input type="number" id="maxCandles" placeholder="All">
+    </div>
+    
+    <div class="field">
+      <label>Speed (seconds per candle)</label>
+      <input type="number" id="speed" value="0.5" min="0" max="10" step="0.1">
+    </div>
+    
+    <div class="btn-group">
+      <button class="btn btn-success btn-full" id="btnStart" onclick="startAgent()">▶ Start</button>
+      <button class="btn btn-warning" id="btnPause" onclick="pauseAgent()" disabled>⏸</button>
+      <button class="btn btn-danger" id="btnStop" onclick="stopAgent()" disabled>⏹</button>
+    </div>
+    
+    <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="saveTrades()">💾 Save Trade Log</button>
+  </div>
+
+  <!-- CENTER: Live Feed -->
+  <div class="panel-center">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="live-feed" id="liveFeed">
+      <div class="log-entry log-system">Welcome to Forex LLM Trading Agent. Configure settings and press Start.</div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Stats & Trades -->
+  <div class="panel-right">
+    <div class="stats-grid">
+      <div class="stat-card"><div class="value" id="statTotal">0</div><div class="label">Trades</div></div>
+      <div class="stat-card stat-win"><div class="value" id="statWins">0</div><div class="label">Wins</div></div>
+      <div class="stat-card stat-loss"><div class="value" id="statLosses">0</div><div class="label">Losses</div></div>
+      <div class="stat-card"><div class="value" id="statWinRate">0%</div><div class="label">Win Rate</div></div>
+      <div class="stat-card"><div class="value" id="statPips">0</div><div class="label">Total Pips</div></div>
+      <div class="stat-card"><div class="value" id="statAvg">0</div><div class="label">Avg Pips</div></div>
+    </div>
+    
+    <div id="activeTradeSection" class="active-trade" style="display:none">
+      <h3>🔴 ACTIVE TRADE</h3>
+      <div class="detail" id="activeTradeInfo"></div>
+    </div>
+    
+    <div class="trades-list">
+      <h3>📜 Trade History</h3>
+      <div id="tradesList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentModel = "kilo-auto/free";
+let pollInterval = null;
+
+// Load initial config
+fetch("/api/config").then(r => r.json()).then(cfg => {
+  document.getElementById("apiKey").value = cfg.api_key || "";
+  document.getElementById("windowSize").value = cfg.window_size || 20;
+  currentModel = cfg.model || "kilo-auto/free";
+  loadDataFiles();
+});
+
+function loadDataFiles() {
+  fetch("/api/data/files").then(r => r.json()).then(data => {
+    const sel = document.getElementById("dataFile");
+    sel.innerHTML = "";
+    data.files.forEach(f => {
+      const opt = document.createElement("option");
+      opt.value = f.name;
+      opt.textContent = `${f.name} (${f.size_kb} KB)`;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+function saveApiKey() {
+  const key = document.getElementById("apiKey").value.trim();
+  if (!key) return alert("Enter API key");
+  
+  fetch("/api/config", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({api_key: key})
+  });
+  
+  // Fetch free models
+  document.getElementById("modelLoading").style.display = "block";
+  fetch("/api/models", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({api_key: key})
+  }).then(r => r.json()).then(data => {
+    document.getElementById("modelLoading").style.display = "none";
+    const list = document.getElementById("modelList");
+    list.innerHTML = "";
+    
+    if (data.models && data.models.length > 0) {
+      data.models.forEach(m => {
+        const div = document.createElement("div");
+        div.className = "model-item" + (m.id === currentModel ? " selected" : "");
+        div.dataset.model = m.id;
+        div.textContent = `${m.name || m.id}`;
+        div.title = `Context: ${m.context_length} tokens`;
+        div.onclick = () => selectModel(m.id);
+        list.appendChild(div);
+      });
+    } else {
+      list.innerHTML = '<div class="model-item">No free models found</div>';
+    }
+  });
+}
+
+function selectModel(modelId) {
+  currentModel = modelId;
+  document.querySelectorAll(".model-item").forEach(el => {
+    el.classList.toggle("selected", el.dataset.model === modelId);
+  });
+  fetch("/api/config", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({model: modelId})
+  });
+}
+
+function startAgent() {
+  const dataFile = document.getElementById("dataFile").value;
+  const maxCandles = document.getElementById("maxCandles").value;
+  const speed = document.getElementById("speed").value;
+  const windowSize = document.getElementById("windowSize").value;
+  
+  if (!dataFile) return alert("Select a data file");
+  
+  // Update config
+  fetch("/api/config", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      model: currentModel,
+      window_size: parseInt(windowSize),
+    })
+  });
+  
+  fetch("/api/start", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      data_file: dataFile,
+      max_candles: maxCandles ? parseInt(maxCandles) : null,
+    })
+  }).then(r => r.json()).then(data => {
+    if (data.error) return alert(data.error);
+    setRunning(true);
+    startPolling();
+  });
+}
+
+function pauseAgent() {
+  fetch("/api/pause", {method: "POST"});
+}
+
+function stopAgent() {
+  fetch("/api/stop", {method: "POST"}).then(() => {
+    setRunning(false);
+    stopPolling();
+  });
+}
+
+function saveTrades() {
+  fetch("/api/save", {method: "POST"}).then(r => r.json()).then(data => {
+    if (data.error) alert(data.error);
+    else addLog("💾 Saved: " + data.path, "system");
+  });
+}
+
+function setRunning(running) {
+  document.getElementById("btnStart").disabled = running;
+  document.getElementById("btnPause").disabled = !running;
+  document.getElementById("btnStop").disabled = !running;
+  
+  const badge = document.getElementById("statusBadge");
+  if (running) {
+    badge.textContent = "RUNNING";
+    badge.className = "status-badge badge-running";
+  } else {
+    badge.textContent = "IDLE";
+    badge.className = "status-badge badge-idle";
+  }
+}
+
+function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(pollStatus, 1000);
+}
+
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+}
+
+function pollStatus() {
+  fetch("/api/status").then(r => r.json()).then(data => {
+    // Update progress
+    if (data.total_candles > 0) {
+      const pct = (data.candle_index / data.total_candles * 100).toFixed(1);
+      document.getElementById("progressFill").style.width = pct + "%";
+    }
+    
+    // Update stats
+    if (data.stats) {
+      document.getElementById("statTotal").textContent = data.stats.total_trades;
+      document.getElementById("statWins").textContent = data.stats.wins;
+      document.getElementById("statLosses").textContent = data.stats.losses;
+      document.getElementById("statWinRate").textContent = data.stats.win_rate + "%";
+      document.getElementById("statPips").textContent = data.stats.total_pips;
+      document.getElementById("statAvg").textContent = data.stats.avg_pips;
+    }
+    
+    // Active trade
+    const atSection = document.getElementById("activeTradeSection");
+    if (data.active_trade) {
+      atSection.style.display = "block";
+      const t = data.active_trade;
+      document.getElementById("activeTradeInfo").innerHTML = 
+        `<strong class="trade-dir ${t.direction.toLowerCase()}">${t.direction}</strong> @ ${t.entry_price}<br>` +
+        `SL: ${t.stop_loss} | TP: ${t.take_profit}<br>` +
+        `Reason: ${t.reason}`;
+    } else {
+      atSection.style.display = "none";
+    }
+    
+    // Trades list
+    const tradesDiv = document.getElementById("tradesList");
+    if (data.trades && data.trades.length > 0) {
+      tradesDiv.innerHTML = data.trades.slice().reverse().map(t => {
+        const cls = t.status === "OPEN" ? "open" : (t.result === "WIN" ? "win" : "loss");
+        const pipsClass = t.pips >= 0 ? "win" : "loss";
+        return `<div class="trade-row ${cls}">
+          <div>
+            <span class="trade-dir ${t.direction.toLowerCase()}">#${t.id} ${t.direction}</span>
+            <span style="color:#666;font-size:10px"> @ ${t.entry_price}</span>
+          </div>
+          <div class="trade-pips ${pipsClass}">${t.pips > 0 ? '+' : ''}${t.pips} pips</div>
+        </div>`;
+      }).join("");
+    }
+    
+    // Logs
+    if (data.logs && data.logs.length > 0) {
+      const feed = document.getElementById("liveFeed");
+      const wasAtBottom = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50;
+      
+      data.logs.forEach(log => {
+        // Avoid duplicates
+        const existing = feed.querySelectorAll(".log-entry");
+        const lastMsg = existing.length > 0 ? existing[existing.length - 1].textContent : "";
+        if (log.msg !== lastMsg.replace(/^\[.*?\]\s*/, "")) {
+          const div = document.createElement("div");
+          div.className = "log-entry log-" + log.level;
+          div.textContent = log.msg;
+          feed.appendChild(div);
+        }
+      });
+      
+      // Trim old entries
+      while (feed.children.length > 300) {
+        feed.removeChild(feed.firstChild);
+      }
+      
+      if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
+    }
+    
+    // Check if stopped
+    if (!data.running && !data.paused && data.candle_index > 0) {
+      setRunning(false);
+      stopPolling();
+      addLog("✅ Backtest complete!", "system");
+    }
+  });
+}
+
+function addLog(msg, level) {
+  const feed = document.getElementById("liveFeed");
+  const div = document.createElement("div");
+  div.className = "log-entry log-" + level;
+  div.textContent = msg;
+  feed.appendChild(div);
+  feed.scrollTop = feed.scrollHeight;
+}
+</script>
+</body>
+</html>
