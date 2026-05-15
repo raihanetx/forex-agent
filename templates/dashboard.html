@@ -194,11 +194,11 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
       </div>
       
       <div class="field">
-        <label>Debate Rounds (when split)</label>
+        <label>Discussion Rounds</label>
         <select id="debateRounds">
-          <option value="0">No debate — skip split votes</option>
-          <option value="1" selected>1 round — argue once</option>
-          <option value="2">2 rounds — deep debate</option>
+          <option value="0">No discussion — vote immediately</option>
+          <option value="1" selected>1 round — full roundtable</option>
+          <option value="2">2 rounds — deep discussion</option>
         </select>
       </div>
       
@@ -573,7 +573,7 @@ function pollStatus() {
       confBadge.className = "confidence-badge conf-" + (info.confidence || "none").toLowerCase();
       
       let decisionText = `Final: ${info.decision}`;
-      if (info.debate_happened) decisionText += " (after debate)";
+      if (info.debate_happened) decisionText += " (after roundtable)";
       document.getElementById("councilDecision").textContent = decisionText;
     } else {
       councilPanel.style.display = "none";

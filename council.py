@@ -1,11 +1,11 @@
 """
-Multi-Agent Trading Council
-Multiple AI agents with different trading personalities and DIFFERENT models.
-- Each agent uses its own LLM model + personality prompt
-- Each agent votes independently (BUY/SELL/HOLD)
-- Majority wins → trade executes
-- Split vote → agents debate, then re-vote
-- No majority after debate → no trade
+Multi-Agent Trading Council — Roundtable Meeting Style
+
+Flow:
+1. OPENING STATEMENTS: Each agent analyzes data independently, presents their case
+2. ROUNDTABLE DISCUSSION: All agents see each other's arguments, respond, try to convince
+3. FINAL VOTE: After discussion, agents cast final votes
+4. CONSENSUS: Majority wins, no majority = no trade
 """
 
 import requests
@@ -14,7 +14,6 @@ import time
 
 
 # ─── Agent Personalities ────────────────────────────────────────────
-# Each agent has a default model. Users can override per-agent models in config.
 
 AGENT_PROFILES = [
     {
@@ -85,42 +84,89 @@ AGENT_PROFILES = [
 ]
 
 
-# ─── Debate Prompt ──────────────────────────────────────────────────
+# ─── Prompts ────────────────────────────────────────────────────────
 
-DEBATE_PROMPT_TEMPLATE = """You are {name}, debating with other traders about EUR/USD.
+OPENING_STATEMENT_PROMPT = """You are {name}, sitting at a roundtable with other Forex traders.
+Everyone is analyzing the same EUR/USD data. It's your turn to present your opening analysis.
+
+YOUR TRADING STYLE:
+{system_prompt}
 
 THE DATA:
 Current price: {price}
 Last 20 candles:
 {candle_table}
 
-YOUR INITIAL VOTE: {my_vote}
-YOUR REASONING: {my_reason}
-
-OTHER AGENTS' VOTES:
-{other_votes}
-
 YOUR TASK:
-1. Defend your position with 2-3 strong arguments
-2. Point out flaws in opposing views
-3. Be open to changing your mind if convinced
-4. If you change your vote, say "REVISED_VOTE: [BUY/SELL/HOLD]"
-5. If you stick to your vote, say "STICK_VOTE: [BUY/SELL/HOLD]"
+Present your analysis to the group. Be specific about what YOU see in the data.
+End with your clear position.
 
-Be direct. No fluff. Argue like a trader, not a professor."""
+FORMAT — Your LAST lines must be:
+POSITION: [BUY/SELL/HOLD]
+ENTRY: [price or 0]
+STOP_LOSS: [price or 0]
+TAKE_PROFIT: [price or 0]
+
+Then on the line before POSITION, give your REASONING (2-3 sentences max).
+Explain what patterns/momentum/signals YOU see that support your position."""
+
+
+ROUNDTABLE_PROMPT = """You are {name} at a roundtable meeting with other Forex traders.
+Everyone has presented their analysis of EUR/USD. Now it's time for OPEN DISCUSSION.
+
+THE DATA:
+Current price: {price}
+Last 20 candles:
+{candle_table}
+
+═══ EVERYONE'S OPENING STATEMENTS ═══
+
+{all_statements}
+
+═══ DISCUSSION RULES ═══
+
+1. Read what others said carefully. They might see something you missed.
+2. If someone makes a good point that changes your mind, SAY SO.
+3. If you think someone is wrong, explain WHY with specific evidence from the data.
+4. You can ask questions to other agents.
+5. Be direct. No fluff. Talk like a trader at a desk, not a professor.
+
+At the END of your response, put EXACTLY one of:
+FINAL_VOTE: BUY
+FINAL_VOTE: SELL
+FINAL_VOTE: HOLD
+
+If you changed your mind from your opening statement, explain why.
+If you're sticking to your original position, defend it."""
+
+
+MODERATOR_PROMPT = """You are a neutral trading floor moderator. Here are the final votes from {num_agents} traders after a roundtable discussion:
+
+{votes_summary}
+
+RULES:
+- Count the votes for BUY, SELL, and HOLD
+- If 2+ out of 3 (or 3+ out of 5) agree on BUY or SELL → that's the consensus
+- If votes are evenly split → HOLD (no trade)
+
+Respond with EXACTLY:
+CONSENSUS: [BUY/SELL/HOLD]
+CONFIDENCE: [HIGH/MEDIUM/LOW]
+REASON: [1 sentence summary of the discussion]"""
 
 
 # ─── Council Class ──────────────────────────────────────────────────
 
+
 class TradingCouncil:
     """
-    Multi-agent voting and debate system.
+    Roundtable meeting style multi-agent council.
     
-    Key design:
-    - Each agent uses a DIFFERENT model (configurable per-agent)
-    - Majority consensus (not unanimous) — 2/3 for 3 agents, 3/5 for 5 agents
-    - Debate round when no majority: agents argue, then re-vote
-    - After debate: majority → trade, still split → no trade
+    Flow:
+    1. Each agent presents opening statement (independent analysis)
+    2. Roundtable discussion (agents see each other's arguments)
+    3. Final votes cast
+    4. Majority consensus determines trade
     """
     
     def __init__(self, config):
@@ -131,19 +177,16 @@ class TradingCouncil:
         self.log_callback = None
         self.last_debate = None
         
-        # Per-agent model mapping from config
-        # Config key: "agent_models" = {"alpha": "model-a", "beta": "model-b", ...}
+        # Per-agent model mapping
         self.agent_models = config.get("agent_models", {})
-        
-        # Resolve each agent's model
         for agent in self.agents:
             agent["model"] = self.agent_models.get(
                 agent["id"],
                 agent.get("default_model", config.get("model", "kilo-auto/free"))
             )
         
-        # Majority threshold: more than half
-        self.majority_threshold = num_agents // 2 + 1  # 2 for 3 agents, 3 for 5
+        # Majority threshold
+        self.majority_threshold = num_agents // 2 + 1
     
     def set_log_callback(self, callback):
         self.log_callback = callback
@@ -160,56 +203,17 @@ class TradingCouncil:
         lines.append("")
         lines.append(f"{'Time':<22} {'Open':<10} {'High':<10} {'Low':<10} {'Close':<10} {'Vol':<8}")
         lines.append("-" * 70)
-        
         for idx, row in window_data.iterrows():
             time_str = idx.strftime("%Y-%m-%d %H:%M")
             lines.append(
                 f"{time_str:<22} {row['open']:<10.5f} {row['high']:<10.5f} "
                 f"{row['low']:<10.5f} {row['close']:<10.5f} {row['volume']:<8.1f}"
             )
-        
         return "\n".join(lines)
     
-    def build_vote_prompt(self, agent, window_data, current_price):
-        """Build individual vote prompt for an agent."""
-        candle_table = self.build_candle_table(window_data, current_price)
-        
-        lines = []
-        lines.append(agent["system_prompt"])
-        lines.append("")
-        lines.append("RULES:")
-        lines.append("- Only say BUY if you see clear setup for your trading style")
-        lines.append("- Only say SELL if you see clear setup for your trading style")
-        lines.append("- Say HOLD if conditions don't match your criteria")
-        lines.append("- Risk:Reward ratio must be at least 1:1.5")
-        lines.append("")
-        lines.append(f"Current price: {current_price}")
-        lines.append("")
-        lines.append("Last 20 candles (Open, High, Low, Close, Volume):")
-        lines.append(candle_table)
-        lines.append("")
-        lines.append("CRITICAL: Your FIRST line MUST be exactly one of these:")
-        lines.append("DECISION: BUY")
-        lines.append("DECISION: SELL")
-        lines.append("DECISION: HOLD")
-        lines.append("")
-        lines.append("If BUY or SELL, include ENTRY, STOP_LOSS, TAKE_PROFIT on separate lines.")
-        lines.append("If HOLD, set ENTRY/STOP_LOSS/TAKE_PROFIT to 0.")
-        lines.append("Keep REASON to 1 sentence max.")
-        lines.append("")
-        lines.append("Example:")
-        lines.append("DECISION: SELL")
-        lines.append("ENTRY: 1.16480")
-        lines.append("STOP_LOSS: 1.16610")
-        lines.append("TAKE_PROFIT: 1.16350")
-        lines.append("REASON: Bearish rejection at resistance.")
-        
-        return "\n".join(lines)
-    
-    def call_llm(self, agent, system_prompt, user_prompt, max_tokens=300):
+    def call_llm(self, agent, system_prompt, user_prompt, max_tokens=500):
         """Call LLM API using the agent's assigned model."""
         model = agent.get("model", self.config.get("model", "kilo-auto/free"))
-        
         try:
             resp = requests.post(
                 self.config["base_url"],
@@ -228,55 +232,34 @@ class TradingCouncil:
                 },
                 timeout=60,
             )
-            
             if resp.status_code != 200:
                 self.log(f"API error ({model}): {resp.status_code}", "error")
                 return None
-            
             data = resp.json()
             message = data["choices"][0]["message"]
             content = message.get("content", "") or ""
             reasoning = message.get("reasoning", "") or ""
-            
             if not content.strip() and reasoning:
                 content = reasoning
-            
             return {
                 "content": content.strip(),
                 "reasoning": reasoning.strip(),
                 "model": data.get("model", model),
             }
-        
         except Exception as e:
             self.log(f"LLM call failed ({model}): {e}", "error")
             return None
     
-    def parse_vote(self, llm_response):
-        """Parse a single agent's vote from LLM response."""
-        if not llm_response:
-            return {
-                "decision": "HOLD", "entry": 0, "stop_loss": 0, "take_profit": 0,
-                "reason": "No response", "raw": "", "model": "N/A",
-            }
-        
-        content = llm_response["content"]
+    def parse_position(self, content):
+        """Parse POSITION or FINAL_VOTE from response text."""
+        result = {"decision": "HOLD", "entry": 0, "stop_loss": 0, "take_profit": 0, "reason": ""}
         lines = content.split("\n")
-        
-        result = {
-            "decision": "HOLD",
-            "entry": 0,
-            "stop_loss": 0,
-            "take_profit": 0,
-            "reason": "",
-            "raw": content,
-            "reasoning": llm_response.get("reasoning", ""),
-            "model": llm_response.get("model", "unknown"),
-        }
         
         for line in lines:
             clean = line.strip().upper()
             
-            if "DECISION" in clean and ":" in clean:
+            # Match POSITION or FINAL_VOTE
+            if ("POSITION" in clean or "FINAL_VOTE" in clean) and ":" in clean:
                 val = clean.split(":", 1)[1].strip()
                 if "BUY" in val:
                     result["decision"] = "BUY"
@@ -306,42 +289,138 @@ class TradingCouncil:
             if "REASON" in clean and ":" in line:
                 result["reason"] = line.split(":", 1)[1].strip()
         
-        # Fallback detection if no DECISION line found
-        if result["decision"] == "HOLD" and not any("DECISION" in l.upper() for l in lines):
-            upper = content.upper()
-            if "SELL" in upper[:200] and "BUY" not in upper[:100]:
-                result["decision"] = "SELL"
-            elif "BUY" in upper[:200] and "SELL" not in upper[:100]:
-                result["decision"] = "BUY"
-        
         return result
     
-    def collect_votes(self, window_data, current_price):
-        """All agents vote independently, each using their own model."""
-        votes = []
+    # ── Phase 1: Opening Statements ─────────────────────────────────
+    
+    def collect_opening_statements(self, window_data, current_price):
+        """Each agent presents their independent analysis."""
+        candle_table = self.build_candle_table(window_data, current_price)
+        statements = []
         
         for agent in self.agents:
             model_name = agent.get("model", "unknown")
-            self.log(f"  {agent['emoji']} {agent['name']} voting... [{model_name}]", "agent_vote")
+            self.log(f"  {agent['emoji']} {agent['name']} presenting... [{model_name}]", "agent_vote")
             
-            prompt = self.build_vote_prompt(agent, window_data, current_price)
-            response = self.call_llm(agent, agent["system_prompt"], prompt)
-            vote = self.parse_vote(response)
-            vote["agent_id"] = agent["id"]
-            vote["agent_name"] = agent["name"]
-            vote["agent_emoji"] = agent["emoji"]
+            prompt = OPENING_STATEMENT_PROMPT.format(
+                name=agent["name"],
+                system_prompt=agent["system_prompt"],
+                price=current_price,
+                candle_table=candle_table,
+            )
             
-            votes.append((agent, vote))
+            response = self.call_llm(agent, agent["system_prompt"], prompt, max_tokens=500)
+            
+            if response:
+                parsed = self.parse_position(response["content"])
+                parsed["raw"] = response["content"]
+                parsed["reasoning"] = response.get("reasoning", "")
+                parsed["model"] = response.get("model", "unknown")
+            else:
+                parsed = {
+                    "decision": "HOLD", "entry": 0, "stop_loss": 0, "take_profit": 0,
+                    "reason": "No response", "raw": "", "model": "N/A",
+                }
+            
+            parsed["agent_id"] = agent["id"]
+            parsed["agent_name"] = agent["name"]
+            parsed["agent_emoji"] = agent["emoji"]
+            
+            statements.append((agent, parsed))
             
             self.log(
-                f"  {agent['emoji']} {agent['id'].upper()}: {vote['decision']} — {vote['reason'][:80]}",
+                f"  {agent['emoji']} {agent['id'].upper()}: {parsed['decision']} — {parsed['reason'][:100]}",
                 "agent_vote"
             )
+            if parsed.get("reasoning"):
+                self.log(f"  💭 {agent['id'].upper()} reasoning: {parsed['reasoning'][:200]}", "thinking")
         
-        return votes
+        return statements
+    
+    # ── Phase 2: Roundtable Discussion ──────────────────────────────
+    
+    def run_roundtable(self, statements, window_data, current_price):
+        """All agents discuss, see each other's arguments, may change their minds."""
+        candle_table = self.build_candle_table(window_data, current_price)
+        
+        # Build the "all statements" block
+        statement_lines = []
+        for agent, vote in statements:
+            statement_lines.append(
+                f"{vote['agent_emoji']} {vote['agent_name']}:\n"
+                f"  Position: {vote['decision']}\n"
+                f"  Entry: {vote['entry']} | SL: {vote['stop_loss']} | TP: {vote['take_profit']}\n"
+                f"  Reasoning: {vote['reason']}\n"
+            )
+        all_statements = "\n".join(statement_lines)
+        
+        self.log("🗣️  ROUNDTABLE DISCUSSION STARTING", "council")
+        self.log("  All agents presenting arguments to each other...", "council")
+        
+        discussion_log = []
+        discussion_log.append("=" * 60)
+        discussion_log.append("🗣️  ROUNDTABLE DISCUSSION")
+        discussion_log.append("=" * 60)
+        
+        revised_votes = []
+        
+        for agent, vote in statements:
+            prompt = ROUNDTABLE_PROMPT.format(
+                name=agent["name"],
+                price=current_price,
+                candle_table=candle_table,
+                all_statements=all_statements,
+            )
+            
+            self.log(f"  {agent['emoji']} {agent['id'].upper()} discussing...", "debate")
+            
+            response = self.call_llm(agent, agent["system_prompt"], prompt, max_tokens=600)
+            
+            if response:
+                content = response["content"]
+                discussion_log.append(f"\n{agent['emoji']} {agent['name']}:")
+                discussion_log.append(content[:500])
+                
+                # Parse final vote from discussion
+                revised = self.parse_position(content)
+                
+                # Keep original SL/TP if discussion didn't provide new ones
+                if revised["entry"] == 0 and vote["entry"] > 0:
+                    revised["entry"] = vote["entry"]
+                    revised["stop_loss"] = vote["stop_loss"]
+                    revised["take_profit"] = vote["take_profit"]
+                
+                revised["agent_id"] = agent["id"]
+                revised["agent_name"] = agent["name"]
+                revised["agent_emoji"] = agent["emoji"]
+                revised["raw"] = content
+                revised["model"] = response.get("model", agent.get("model", "unknown"))
+                
+                # Log if they changed their mind
+                if revised["decision"] != vote["decision"]:
+                    self.log(
+                        f"  {agent['emoji']} {agent['id'].upper()} CHANGED MIND: "
+                        f"{vote['decision']} → {revised['decision']}",
+                        "debate"
+                    )
+                else:
+                    self.log(
+                        f"  {agent['emoji']} {agent['id'].upper()} STICKS WITH: {revised['decision']}",
+                        "debate"
+                    )
+                
+                revised_votes.append((agent, revised))
+            else:
+                # Keep original vote if discussion fails
+                revised_votes.append((agent, vote))
+        
+        self.last_debate = "\n".join(discussion_log)
+        return revised_votes
+    
+    # ── Phase 3: Consensus ──────────────────────────────────────────
     
     def tally_votes(self, votes):
-        """Count votes. Returns dict with counts and majority info."""
+        """Count votes."""
         counts = {"BUY": 0, "SELL": 0, "HOLD": 0}
         for agent, vote in votes:
             counts[vote["decision"]] += 1
@@ -358,105 +437,23 @@ class TradingCouncil:
             "majority_pct": round(majority_count / total * 100),
             "has_majority": majority_count >= self.majority_threshold,
             "is_unanimous": majority_count == total,
-            "is_split": max(counts.values()) < self.majority_threshold,
         }
     
-    def run_debate(self, votes, window_data, current_price):
-        """Agents debate their positions. Returns revised votes."""
-        candle_table = self.build_candle_table(window_data, current_price)
-        
-        debate_log = []
-        debate_log.append("=" * 60)
-        debate_log.append("🗣️  DEBATE ROUND — Agents arguing positions...")
-        debate_log.append("=" * 60)
-        
-        revised_votes = []
-        
-        for agent, vote in votes:
-            # Build "other votes" summary
-            other_lines = []
-            for other_agent, other_vote in votes:
-                if other_agent["id"] != agent["id"]:
-                    other_lines.append(
-                        f"- {other_agent['emoji']} {other_agent['id'].upper()}: "
-                        f"{other_vote['decision']} — {other_vote['reason'][:80]}"
-                    )
-            
-            debate_prompt = DEBATE_PROMPT_TEMPLATE.format(
-                name=agent["name"],
-                price=current_price,
-                candle_table=candle_table,
-                my_vote=vote["decision"],
-                my_reason=vote["reason"],
-                other_votes="\n".join(other_lines),
-            )
-            
-            self.log(f"  {agent['emoji']} {agent['id'].upper()} debating...", "debate")
-            
-            response = self.call_llm(agent, agent["system_prompt"], debate_prompt, max_tokens=400)
-            
-            if response:
-                content = response["content"]
-                debate_log.append(f"\n{agent['emoji']} {agent['name']}:")
-                debate_log.append(content[:300])
-                
-                # Check for revised vote
-                revised = vote.copy()
-                for line in content.split("\n"):
-                    upper = line.strip().upper()
-                    if "REVISED_VOTE" in upper and ":" in upper:
-                        val = upper.split(":", 1)[1].strip()
-                        if "BUY" in val:
-                            revised["decision"] = "BUY"
-                        elif "SELL" in val:
-                            revised["decision"] = "SELL"
-                        else:
-                            revised["decision"] = "HOLD"
-                        self.log(f"  {agent['emoji']} {agent['id'].upper()} REVISED → {revised['decision']}", "debate")
-                        break
-                    elif "STICK_VOTE" in upper and ":" in upper:
-                        val = upper.split(":", 1)[1].strip()
-                        if "BUY" in val:
-                            revised["decision"] = "BUY"
-                        elif "SELL" in val:
-                            revised["decision"] = "SELL"
-                        else:
-                            revised["decision"] = "HOLD"
-                        break
-                
-                revised_votes.append((agent, revised))
-            else:
-                revised_votes.append((agent, vote))
-        
-        self.last_debate = "\n".join(debate_log)
-        return revised_votes
-    
     def get_consensus(self, votes):
-        """
-        Determine final consensus from votes.
-        
-        MAJORITY RULES:
-        - Majority (2/3 or 3/5) agree on BUY or SELL → TRADE
-        - No majority (split) → NO TRADE
-        - All HOLD → NO TRADE
-        - BUY and SELL both have votes but neither has majority → NO TRADE
-        """
+        """Determine final consensus from votes."""
         tally = self.tally_votes(votes)
         counts = tally["counts"]
-        total = tally["total"]
         
         # Check if any direction has majority
         for direction in ["BUY", "SELL"]:
             if counts[direction] >= self.majority_threshold:
-                # MAJORITY ACHIEVED
                 matching_votes = [v for _, v in votes if v["decision"] == direction]
                 avg_entry = sum(v["entry"] for v in matching_votes) / len(matching_votes)
                 avg_sl = sum(v["stop_loss"] for v in matching_votes) / len(matching_votes)
                 avg_tp = sum(v["take_profit"] for v in matching_votes) / len(matching_votes)
                 
-                reasons = [f"{v['agent_emoji']}{v['reason'][:40]}" for v in matching_votes]
-                
-                confidence = "HIGH" if counts[direction] == total else "MEDIUM"
+                reasons = [f"{v['agent_emoji']}{v['reason'][:50]}" for v in matching_votes]
+                confidence = "HIGH" if counts[direction] == tally["total"] else "MEDIUM"
                 
                 return {
                     "decision": direction,
@@ -470,7 +467,7 @@ class TradingCouncil:
                     "debate_happened": self.last_debate is not None,
                 }
         
-        # No majority — no trade
+        # No majority
         reason_parts = []
         if counts["BUY"] > 0:
             reason_parts.append(f"BUY×{counts['BUY']}")
@@ -484,70 +481,67 @@ class TradingCouncil:
             "entry": 0,
             "stop_loss": 0,
             "take_profit": 0,
-            "reason": f"No majority ({' '.join(reason_parts)}) — trade skipped",
+            "reason": f"No majority ({' '.join(reason_parts)}) — no trade",
             "confidence": "NONE",
             "vote_counts": counts,
             "tally": tally,
             "debate_happened": self.last_debate is not None,
         }
     
+    # ── Main Flow ───────────────────────────────────────────────────
+    
     def decide(self, window_data, current_price):
         """
-        Full council decision flow.
+        Full roundtable meeting flow:
         
-        1. All agents vote independently (each with own model)
-        2. If majority on BUY/SELL → TRADE immediately
-        3. If no majority → debate → re-vote
-        4. After debate: majority → TRADE
-        5. After debate: still no majority → SKIP
+        1. OPENING STATEMENTS — each agent presents independently
+        2. ROUNDTABLE DISCUSSION — agents see each other's arguments, debate
+        3. FINAL VOTE — after discussion, agents cast final votes
+        4. CONSENSUS — majority wins
         """
         self.last_debate = None
         
-        self.log("🏛️  COUNCIL SESSION STARTED", "council")
-        
-        # Log which models each agent uses
+        self.log("🏛️  ROUNDTABLE MEETING STARTED", "council")
         for agent in self.agents:
             self.log(f"  {agent['emoji']} {agent['id'].upper()} → {agent['model']}", "council")
         
-        # Step 1: Collect votes
-        self.log("📋 Phase 1: Independent voting...", "council")
-        votes = self.collect_votes(window_data, current_price)
-        tally = self.tally_votes(votes)
+        # Phase 1: Opening Statements
+        self.log("📋 Phase 1: Opening Statements — each agent presents their analysis", "council")
+        statements = self.collect_opening_statements(window_data, current_price)
+        tally = self.tally_votes(statements)
         
         self.log(
-            f"📊 Votes: BUY={tally['counts']['BUY']} SELL={tally['counts']['SELL']} "
-            f"HOLD={tally['counts']['HOLD']} | Need {self.majority_threshold}/{tally['total']} for trade",
+            f"📊 Opening positions: BUY={tally['counts']['BUY']} SELL={tally['counts']['SELL']} "
+            f"HOLD={tally['counts']['HOLD']}",
             "council"
         )
         
-        # Step 2: Check for majority
-        if tally["has_majority"] and tally["majority_dir"] in ["BUY", "SELL"]:
-            self.log(f"✅ MAJORITY {tally['majority_dir']} ({tally['majority_count']}/{tally['total']}) — Trade approved!", "council")
-            return self.get_consensus(votes)
-        
-        # Step 3: No majority → debate
-        if self.debate_rounds <= 0:
-            self.log("❌ No majority, debate disabled — Trade SKIPPED", "council")
-            return self.get_consensus(votes)
-        
-        self.log("🗣️  No majority — Starting debate...", "council")
-        
-        for round_num in range(self.debate_rounds):
-            self.log(f"🔄 Debate round {round_num + 1}/{self.debate_rounds}", "council")
-            votes = self.run_debate(votes, window_data, current_price)
-            tally = self.tally_votes(votes)
+        # Phase 2: Roundtable Discussion
+        if self.debate_rounds > 0:
+            self.log("🗣️  Phase 2: Roundtable Discussion", "council")
+            final_votes = self.run_roundtable(statements, window_data, current_price)
             
-            self.log(
-                f"📊 After debate: BUY={tally['counts']['BUY']} SELL={tally['counts']['SELL']} "
-                f"HOLD={tally['counts']['HOLD']}",
-                "council"
-            )
-            
-            # Check for majority after debate
-            if tally["has_majority"] and tally["majority_dir"] in ["BUY", "SELL"]:
-                self.log(f"✅ MAJORITY after debate: {tally['majority_dir']} — Trade approved!", "council")
-                return self.get_consensus(votes)
+            # Multiple rounds if configured
+            for round_num in range(1, self.debate_rounds):
+                self.log(f"🔄 Discussion round {round_num + 1}/{self.debate_rounds}", "council")
+                final_votes = self.run_roundtable(final_votes, window_data, current_price)
+        else:
+            self.log("⏭️  Discussion skipped (debate_rounds=0)", "council")
+            final_votes = statements
         
-        # Step 4: Still no majority → no trade
-        self.log("❌ No majority after debate — Trade SKIPPED", "council")
-        return self.get_consensus(votes)
+        # Phase 3: Final Consensus
+        tally = self.tally_votes(final_votes)
+        self.log(
+            f"📊 Final votes: BUY={tally['counts']['BUY']} SELL={tally['counts']['SELL']} "
+            f"HOLD={tally['counts']['HOLD']} | Need {self.majority_threshold}/{tally['total']}",
+            "council"
+        )
+        
+        consensus = self.get_consensus(final_votes)
+        
+        if consensus["decision"] in ["BUY", "SELL"]:
+            self.log(f"✅ CONSENSUS: {consensus['decision']} (confidence: {consensus['confidence']})", "council")
+        else:
+            self.log(f"❌ NO CONSENSUS — no trade", "council")
+        
+        return consensus
