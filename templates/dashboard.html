@@ -279,19 +279,35 @@ const AGENTS = [
   { id: "epsilon", name: "Epsilon — Contrarian", emoji: "🔄" },
 ];
 
-// Init
+// Init — load config, restore from localStorage if Space restarted
 fetch("/api/config").then(r => r.json()).then(cfg => {
-  document.getElementById("apiKey").value = cfg.api_key || "";
-  document.getElementById("windowSize").value = cfg.window_size || 20;
-  currentModel = cfg.model || "kilo-auto/free";
-  if (cfg.use_council !== undefined) document.getElementById("useCouncil").checked = cfg.use_council;
-  if (cfg.num_agents) document.getElementById("numAgents").value = cfg.num_agents;
-  if (cfg.debate_rounds !== undefined) document.getElementById("debateRounds").value = cfg.debate_rounds;
-  document.getElementById("councilSettings").style.display = cfg.use_council ? "block" : "none";
+  // Restore saved settings from browser localStorage
+  const saved = JSON.parse(localStorage.getItem("forex_config") || "{}");
+  const merged = {...cfg, ...saved};
+  
+  document.getElementById("apiKey").value = merged.api_key || "";
+  document.getElementById("windowSize").value = merged.window_size || 20;
+  currentModel = merged.model || "kilo-auto/free";
+  if (merged.use_council !== undefined) document.getElementById("useCouncil").checked = merged.use_council;
+  if (merged.num_agents) document.getElementById("numAgents").value = merged.num_agents;
+  if (merged.debate_rounds !== undefined) document.getElementById("debateRounds").value = merged.debate_rounds;
+  document.getElementById("councilSettings").style.display = merged.use_council ? "block" : "none";
   updateMode();
   loadDataFiles();
-  renderAgents(cfg.agent_models || {});
-  if (cfg.api_key && cfg.api_key.length > 10) fetchModels(cfg.api_key);
+  renderAgents(merged.agent_models || {});
+  
+  // Push restored config back to server
+  if (saved.api_key) {
+    postConfig({
+      api_key: saved.api_key,
+      model: saved.model || "kilo-auto/free",
+      use_council: saved.use_council || false,
+      num_agents: saved.num_agents || 3,
+      debate_rounds: saved.debate_rounds || 1,
+      agent_models: saved.agent_models || {},
+    });
+    if (saved.api_key.length > 10) fetchModels(saved.api_key);
+  }
 });
 
 // Events
@@ -379,6 +395,11 @@ function selModel(id) {
 }
 
 function postConfig(data) {
+  // Save to browser localStorage (persists across Space restarts)
+  const saved = JSON.parse(localStorage.getItem("forex_config") || "{}");
+  Object.assign(saved, data);
+  localStorage.setItem("forex_config", JSON.stringify(saved));
+  
   fetch("/api/config", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data)});
 }
 
