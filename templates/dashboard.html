@@ -16,7 +16,7 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 .badge-paused { background: #3d3d0a; color: #ffeb3b; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
 
-.container { display: grid; grid-template-columns: 300px 1fr 320px; gap: 0; height: calc(100vh - 56px); }
+.container { display: grid; grid-template-columns: 320px 1fr 320px; gap: 0; height: calc(100vh - 56px); }
 
 /* LEFT PANEL — Settings */
 .panel-left { background: #111118; border-right: 1px solid #2a2a4a; padding: 16px; overflow-y: auto; }
@@ -45,6 +45,13 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 .toggle .slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px; background: #888; border-radius: 50%; transition: 0.3s; }
 .toggle input:checked + .slider { background: #0a3d4d; }
 .toggle input:checked + .slider:before { transform: translateX(22px); background: #00d4ff; }
+
+/* Agent model cards */
+.agent-card { background: #1a1a24; border: 1px solid #2a2a4a; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+.agent-card .agent-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.agent-card .agent-emoji { font-size: 16px; }
+.agent-card .agent-name { font-size: 11px; color: #aaa; font-weight: 600; }
+.agent-card select { font-size: 11px; padding: 4px 6px; }
 
 /* CENTER — Live Feed */
 .panel-center { display: flex; flex-direction: column; overflow: hidden; }
@@ -84,7 +91,7 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 .confidence-badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 600; margin-left: 8px; }
 .conf-high { background: #0a3d0a; color: #4caf50; }
 .conf-medium { background: #3d3d0a; color: #ffeb3b; }
-.conf-low { background: #3d0a0a; color: #f44336; }
+.conf-none { background: #3d0a0a; color: #f44336; }
 
 .active-trade { background: #1a2a1a; border: 1px solid #4caf50; border-radius: 8px; padding: 12px; margin: 0 12px 8px; }
 .active-trade h3 { font-size: 12px; color: #4caf50; margin-bottom: 6px; }
@@ -136,7 +143,7 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
     </div>
     
     <div class="field">
-      <label>LLM Model (Free Only)</label>
+      <label>Default Model (fallback)</label>
       <div id="modelList" class="model-list">
         <div class="model-item selected" data-model="kilo-auto/free">kilo-auto/free (default)</div>
       </div>
@@ -194,6 +201,15 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
           <option value="2">2 rounds — deep debate</option>
         </select>
       </div>
+      
+      <hr class="section-divider">
+      <h2>🤖 Agent Models (each agent = different model)</h2>
+      <div id="agentModelsContainer">
+        <!-- Populated dynamically -->
+      </div>
+      <div style="font-size:10px;color:#556;margin-top:4px">
+        💡 Each agent should use a different model for diverse opinions
+      </div>
     </div>
     
     <div class="btn-group">
@@ -245,7 +261,16 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 
 <script>
 let currentModel = "kilo-auto/free";
+let availableModels = [];
 let pollInterval = null;
+
+const AGENT_PROFILES = [
+  { id: "alpha", name: "Alpha — Trend Follower", emoji: "🔺" },
+  { id: "beta",  name: "Beta — Momentum Hunter", emoji: "⚡" },
+  { id: "gamma", name: "Gamma — Price Action", emoji: "📐" },
+  { id: "delta", name: "Delta — Volume Analyst", emoji: "📊" },
+  { id: "epsilon", name: "Epsilon — Contrarian", emoji: "🔄" },
+];
 
 // Load initial config
 fetch("/api/config").then(r => r.json()).then(cfg => {
@@ -260,6 +285,12 @@ fetch("/api/config").then(r => r.json()).then(cfg => {
   
   updateModeBadge();
   loadDataFiles();
+  renderAgentModels(cfg.agent_models || {});
+  
+  // Auto-fetch models if API key exists
+  if (cfg.api_key && cfg.api_key.length > 10) {
+    fetchModels(cfg.api_key);
+  }
 });
 
 // Council toggle
@@ -273,8 +304,8 @@ document.getElementById("useCouncil").addEventListener("change", function() {
   });
 });
 
-// Num agents change
 document.getElementById("numAgents").addEventListener("change", function() {
+  renderAgentModels(getAgentModelSelections());
   fetch("/api/config", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
@@ -282,7 +313,6 @@ document.getElementById("numAgents").addEventListener("change", function() {
   });
 });
 
-// Debate rounds change
 document.getElementById("debateRounds").addEventListener("change", function() {
   fetch("/api/config", {
     method: "POST",
@@ -305,6 +335,48 @@ function updateModeBadge() {
   }
 }
 
+function renderAgentModels(savedModels) {
+  const numAgents = parseInt(document.getElementById("numAgents").value);
+  const container = document.getElementById("agentModelsContainer");
+  const profiles = AGENT_PROFILES.slice(0, numAgents);
+  
+  container.innerHTML = profiles.map(p => {
+    const savedModel = (savedModels || {})[p.id] || currentModel;
+    return `<div class="agent-card">
+      <div class="agent-header">
+        <span class="agent-emoji">${p.emoji}</span>
+        <span class="agent-name">${p.name}</span>
+      </div>
+      <select id="agentModel_${p.id}" onchange="onAgentModelChange()">
+        ${availableModels.length > 0 
+          ? availableModels.map(m => `<option value="${m.id}" ${m.id === savedModel ? 'selected' : ''}>${m.name || m.id}</option>`).join("")
+          : `<option value="${savedModel}" selected>${savedModel}</option>`
+        }
+      </select>
+    </div>`;
+  }).join("");
+}
+
+function getAgentModelSelections() {
+  const numAgents = parseInt(document.getElementById("numAgents").value);
+  const profiles = AGENT_PROFILES.slice(0, numAgents);
+  const models = {};
+  profiles.forEach(p => {
+    const sel = document.getElementById(`agentModel_${p.id}`);
+    if (sel) models[p.id] = sel.value;
+  });
+  return models;
+}
+
+function onAgentModelChange() {
+  const agentModels = getAgentModelSelections();
+  fetch("/api/config", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({agent_models: agentModels})
+  });
+}
+
 function loadDataFiles() {
   fetch("/api/data/files").then(r => r.json()).then(data => {
     const sel = document.getElementById("dataFile");
@@ -313,7 +385,7 @@ function loadDataFiles() {
     
     if (data.files.length === 0) {
       sel.innerHTML = '<option value="">No data files found</option>';
-      status.textContent = "⚠ No parquet files. Click download above.";
+      status.textContent = "⚠ No parquet files in data/ directory";
       status.style.color = "#f44336";
     } else {
       status.textContent = `✅ ${data.files.length} file(s) available`;
@@ -328,8 +400,6 @@ function loadDataFiles() {
   });
 }
 
-
-
 function saveApiKey() {
   const key = document.getElementById("apiKey").value.trim();
   if (!key) return alert("Enter API key");
@@ -340,17 +410,23 @@ function saveApiKey() {
     body: JSON.stringify({api_key: key})
   });
   
+  fetchModels(key);
+}
+
+function fetchModels(apiKey) {
   document.getElementById("modelLoading").style.display = "block";
   fetch("/api/models", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({api_key: key})
+    body: JSON.stringify({api_key: apiKey})
   }).then(r => r.json()).then(data => {
     document.getElementById("modelLoading").style.display = "none";
     const list = document.getElementById("modelList");
     list.innerHTML = "";
     
     if (data.models && data.models.length > 0) {
+      availableModels = data.models;
+      
       data.models.forEach(m => {
         const div = document.createElement("div");
         div.className = "model-item" + (m.id === currentModel ? " selected" : "");
@@ -360,6 +436,9 @@ function saveApiKey() {
         div.onclick = () => selectModel(m.id);
         list.appendChild(div);
       });
+      
+      // Refresh agent model dropdowns with new models
+      renderAgentModels(getAgentModelSelections());
     } else {
       list.innerHTML = '<div class="model-item">No free models found</div>';
     }
@@ -368,7 +447,7 @@ function saveApiKey() {
 
 function selectModel(modelId) {
   currentModel = modelId;
-  document.querySelectorAll(".model-item").forEach(el => {
+  document.querySelectorAll("#modelList .model-item").forEach(el => {
     el.classList.toggle("selected", el.dataset.model === modelId);
   });
   fetch("/api/config", {
@@ -389,6 +468,9 @@ function startAgent() {
   
   if (!dataFile) return alert("Select a data file");
   
+  // Gather per-agent models
+  const agentModels = useCouncil ? getAgentModelSelections() : {};
+  
   // Update config first
   fetch("/api/config", {
     method: "POST",
@@ -399,6 +481,7 @@ function startAgent() {
       use_council: useCouncil,
       num_agents: parseInt(numAgents),
       debate_rounds: parseInt(debateRounds),
+      agent_models: agentModels,
     })
   });
   
@@ -479,19 +562,16 @@ function pollStatus() {
       const info = data.council_info;
       const votes = info.votes || {};
       
-      // Build vote bar
       let barHtml = '';
       if (votes.BUY > 0) barHtml += `<span class="vote-pill vote-buy">BUY ×${votes.BUY}</span>`;
       if (votes.SELL > 0) barHtml += `<span class="vote-pill vote-sell">SELL ×${votes.SELL}</span>`;
       if (votes.HOLD > 0) barHtml += `<span class="vote-pill vote-hold">HOLD ×${votes.HOLD}</span>`;
       document.getElementById("voteBar").innerHTML = barHtml;
       
-      // Confidence
       const confBadge = document.getElementById("confidenceBadge");
       confBadge.textContent = info.confidence || "";
-      confBadge.className = "confidence-badge conf-" + (info.confidence || "").toLowerCase();
+      confBadge.className = "confidence-badge conf-" + (info.confidence || "none").toLowerCase();
       
-      // Decision
       let decisionText = `Final: ${info.decision}`;
       if (info.debate_happened) decisionText += " (after debate)";
       document.getElementById("councilDecision").textContent = decisionText;

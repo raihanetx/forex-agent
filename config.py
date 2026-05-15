@@ -1,6 +1,6 @@
 """
 Configuration Manager
-Stores API key, model, window size, and other settings.
+Stores API key, model, window size, per-agent models, and other settings.
 Persists to config.json so settings survive restarts.
 """
 
@@ -12,19 +12,21 @@ CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.j
 
 DEFAULT_CONFIG = {
     "api_key": "",
-    "model": "kilo-auto/free",
+    "model": "kilo-auto/free",  # Default / fallback model
     "base_url": "https://api.kilo.ai/api/gateway/chat/completions",
     "window_size": 20,
     "pair": "EURUSD",
     "timeframe": "M1",
-    "data_file": "",  # will be set dynamically
+    "data_file": "",
     "temperature": 0.3,
     "max_tokens": 800,
     # Multi-agent council settings
     "use_council": False,
-    "num_agents": 3,           # 3 or 5 agents
-    "debate_rounds": 1,        # Number of debate rounds when split
-    "consensus_threshold": 0.6, # 60% agreement needed
+    "num_agents": 3,
+    "debate_rounds": 1,
+    "consensus_threshold": 0.6,
+    # Per-agent model overrides: {"alpha": "model-a", "beta": "model-b", ...}
+    "agent_models": {},
 }
 
 
@@ -33,6 +35,9 @@ def load_config() -> dict:
         with open(CONFIG_FILE, "r") as f:
             saved = json.load(f)
             merged = {**DEFAULT_CONFIG, **saved}
+            # Ensure agent_models is always a dict
+            if not isinstance(merged.get("agent_models"), dict):
+                merged["agent_models"] = {}
             return merged
     return DEFAULT_CONFIG.copy()
 

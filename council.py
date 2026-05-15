@@ -1,10 +1,11 @@
 """
 Multi-Agent Trading Council
-Multiple AI agents with different trading personalities vote and debate.
+Multiple AI agents with different trading personalities and DIFFERENT models.
+- Each agent uses its own LLM model + personality prompt
 - Each agent votes independently (BUY/SELL/HOLD)
 - Majority wins → trade executes
 - Split vote → agents debate, then re-vote
-- No consensus → no trade (safe approach)
+- No majority after debate → no trade
 """
 
 import requests
@@ -13,6 +14,7 @@ import time
 
 
 # ─── Agent Personalities ────────────────────────────────────────────
+# Each agent has a default model. Users can override per-agent models in config.
 
 AGENT_PROFILES = [
     {
@@ -20,6 +22,7 @@ AGENT_PROFILES = [
         "name": "Alpha — Trend Follower",
         "emoji": "🔺",
         "style": "trend_following",
+        "default_model": "kilo-auto/free",
         "system_prompt": (
             "You are Alpha, a conservative trend-following trader. You only trade WITH the trend. "
             "You look for higher highs, higher lows (uptrend) or lower highs, lower lows (downtrend). "
@@ -32,6 +35,7 @@ AGENT_PROFILES = [
         "name": "Beta — Momentum Hunter",
         "emoji": "⚡",
         "style": "momentum",
+        "default_model": "kilo-auto/free",
         "system_prompt": (
             "You are Beta, an aggressive momentum trader. You look for strong price moves, "
             "big candles, and volume spikes. You ride momentum and exit fast. "
@@ -44,6 +48,7 @@ AGENT_PROFILES = [
         "name": "Gamma — Price Action Purist",
         "emoji": "📐",
         "style": "price_action",
+        "default_model": "kilo-auto/free",
         "system_prompt": (
             "You are Gamma, a pure price action trader. You read candlestick patterns: "
             "pin bars, engulfing candles, dojis, inside bars. You ignore volume. "
@@ -56,6 +61,7 @@ AGENT_PROFILES = [
         "name": "Delta — Volume Analyst",
         "emoji": "📊",
         "style": "volume",
+        "default_model": "kilo-auto/free",
         "system_prompt": (
             "You are Delta, a volume-focused trader. You believe volume leads price. "
             "High volume on green candles = buyers in control. High volume on red = sellers. "
@@ -68,6 +74,7 @@ AGENT_PROFILES = [
         "name": "Epsilon — Contrarian",
         "emoji": "🔄",
         "style": "contrarian",
+        "default_model": "kilo-auto/free",
         "system_prompt": (
             "You are Epsilon, a contrarian trader. You look for exhaustion and reversal signals. "
             "When everyone is buying, you look to sell. When everyone is selling, you look to buy. "
@@ -103,34 +110,40 @@ YOUR TASK:
 Be direct. No fluff. Argue like a trader, not a professor."""
 
 
-CONSENSUS_PROMPT = """You are a neutral moderator. Here are the final votes from {num_agents} trading agents:
-
-{votes_summary}
-
-RULES:
-- If 3+ agents agree on BUY or SELL → CONSENSUS: [direction]
-- If 3+ agents say HOLD → CONSENSUS: HOLD
-- If votes are split (2-2-1 or similar) → CONSENSUS: HOLD (no trade)
-- If 2 agree on direction but others say HOLD → CONSENSUS: [direction] (weak)
-
-Respond with EXACTLY:
-CONSENSUS: [BUY/SELL/HOLD]
-CONFIDENCE: [HIGH/MEDIUM/LOW]
-REASON: [1 sentence]"""
-
-
 # ─── Council Class ──────────────────────────────────────────────────
 
 class TradingCouncil:
-    """Multi-agent voting and debate system."""
+    """
+    Multi-agent voting and debate system.
+    
+    Key design:
+    - Each agent uses a DIFFERENT model (configurable per-agent)
+    - Majority consensus (not unanimous) — 2/3 for 3 agents, 3/5 for 5 agents
+    - Debate round when no majority: agents argue, then re-vote
+    - After debate: majority → trade, still split → no trade
+    """
     
     def __init__(self, config):
         self.config = config
-        self.agents = AGENT_PROFILES[:config.get("num_agents", 3)]
+        num_agents = config.get("num_agents", 3)
+        self.agents = AGENT_PROFILES[:num_agents]
         self.debate_rounds = config.get("debate_rounds", 1)
-        self.consensus_threshold = config.get("consensus_threshold", 0.6)  # 60% agreement needed
         self.log_callback = None
-        self.last_debate = None  # Store last debate transcript
+        self.last_debate = None
+        
+        # Per-agent model mapping from config
+        # Config key: "agent_models" = {"alpha": "model-a", "beta": "model-b", ...}
+        self.agent_models = config.get("agent_models", {})
+        
+        # Resolve each agent's model
+        for agent in self.agents:
+            agent["model"] = self.agent_models.get(
+                agent["id"],
+                agent.get("default_model", config.get("model", "kilo-auto/free"))
+            )
+        
+        # Majority threshold: more than half
+        self.majority_threshold = num_agents // 2 + 1  # 2 for 3 agents, 3 for 5
     
     def set_log_callback(self, callback):
         self.log_callback = callback
@@ -193,8 +206,10 @@ class TradingCouncil:
         
         return "\n".join(lines)
     
-    def call_llm(self, system_prompt, user_prompt, max_tokens=300):
-        """Call LLM API."""
+    def call_llm(self, agent, system_prompt, user_prompt, max_tokens=300):
+        """Call LLM API using the agent's assigned model."""
+        model = agent.get("model", self.config.get("model", "kilo-auto/free"))
+        
         try:
             resp = requests.post(
                 self.config["base_url"],
@@ -203,7 +218,7 @@ class TradingCouncil:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": self.config["model"],
+                    "model": model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
@@ -215,7 +230,7 @@ class TradingCouncil:
             )
             
             if resp.status_code != 200:
-                self.log(f"API error: {resp.status_code}", "error")
+                self.log(f"API error ({model}): {resp.status_code}", "error")
                 return None
             
             data = resp.json()
@@ -226,16 +241,23 @@ class TradingCouncil:
             if not content.strip() and reasoning:
                 content = reasoning
             
-            return {"content": content.strip(), "reasoning": reasoning.strip()}
+            return {
+                "content": content.strip(),
+                "reasoning": reasoning.strip(),
+                "model": data.get("model", model),
+            }
         
         except Exception as e:
-            self.log(f"LLM call failed: {e}", "error")
+            self.log(f"LLM call failed ({model}): {e}", "error")
             return None
     
     def parse_vote(self, llm_response):
         """Parse a single agent's vote from LLM response."""
         if not llm_response:
-            return {"decision": "HOLD", "entry": 0, "stop_loss": 0, "take_profit": 0, "reason": "No response", "raw": ""}
+            return {
+                "decision": "HOLD", "entry": 0, "stop_loss": 0, "take_profit": 0,
+                "reason": "No response", "raw": "", "model": "N/A",
+            }
         
         content = llm_response["content"]
         lines = content.split("\n")
@@ -248,6 +270,7 @@ class TradingCouncil:
             "reason": "",
             "raw": content,
             "reasoning": llm_response.get("reasoning", ""),
+            "model": llm_response.get("model", "unknown"),
         }
         
         for line in lines:
@@ -283,7 +306,7 @@ class TradingCouncil:
             if "REASON" in clean and ":" in line:
                 result["reason"] = line.split(":", 1)[1].strip()
         
-        # Fallback detection
+        # Fallback detection if no DECISION line found
         if result["decision"] == "HOLD" and not any("DECISION" in l.upper() for l in lines):
             upper = content.upper()
             if "SELL" in upper[:200] and "BUY" not in upper[:100]:
@@ -294,14 +317,15 @@ class TradingCouncil:
         return result
     
     def collect_votes(self, window_data, current_price):
-        """All agents vote independently. Returns list of (agent, vote) tuples."""
+        """All agents vote independently, each using their own model."""
         votes = []
         
         for agent in self.agents:
-            self.log(f"  {agent['emoji']} {agent['name']} voting...", "agent_vote")
+            model_name = agent.get("model", "unknown")
+            self.log(f"  {agent['emoji']} {agent['name']} voting... [{model_name}]", "agent_vote")
             
             prompt = self.build_vote_prompt(agent, window_data, current_price)
-            response = self.call_llm(agent["system_prompt"], prompt)
+            response = self.call_llm(agent, agent["system_prompt"], prompt)
             vote = self.parse_vote(response)
             vote["agent_id"] = agent["id"]
             vote["agent_name"] = agent["name"]
@@ -332,9 +356,9 @@ class TradingCouncil:
             "majority_dir": majority_dir,
             "majority_count": majority_count,
             "majority_pct": round(majority_count / total * 100),
-            "is_consensus": majority_count > total / 2,
+            "has_majority": majority_count >= self.majority_threshold,
             "is_unanimous": majority_count == total,
-            "is_split": max(counts.values()) <= total / 2,
+            "is_split": max(counts.values()) < self.majority_threshold,
         }
     
     def run_debate(self, votes, window_data, current_price):
@@ -369,7 +393,7 @@ class TradingCouncil:
             
             self.log(f"  {agent['emoji']} {agent['id'].upper()} debating...", "debate")
             
-            response = self.call_llm(agent["system_prompt"], debate_prompt, max_tokens=400)
+            response = self.call_llm(agent, agent["system_prompt"], debate_prompt, max_tokens=400)
             
             if response:
                 content = response["content"]
@@ -411,27 +435,28 @@ class TradingCouncil:
         """
         Determine final consensus from votes.
         
-        STRICT RULES (user requirement):
-        - ALL agents must agree on the same BUY or SELL direction → TRADE
-        - If ANY agent disagrees → NO TRADE (skip)
-        - If all HOLD → NO TRADE (skip)
-        - If split → debate → still split → NO TRADE
-        - Only unanimous BUY or unanimous SELL triggers a trade
+        MAJORITY RULES:
+        - Majority (2/3 or 3/5) agree on BUY or SELL → TRADE
+        - No majority (split) → NO TRADE
+        - All HOLD → NO TRADE
+        - BUY and SELL both have votes but neither has majority → NO TRADE
         """
         tally = self.tally_votes(votes)
         counts = tally["counts"]
         total = tally["total"]
         
-        # Check for unanimous BUY or unanimous SELL
+        # Check if any direction has majority
         for direction in ["BUY", "SELL"]:
-            if counts[direction] == total:
-                # UNANIMOUS — all agents agree
-                matching = [v for _, v in votes]
-                avg_entry = sum(v["entry"] for v in matching) / len(matching)
-                avg_sl = sum(v["stop_loss"] for v in matching) / len(matching)
-                avg_tp = sum(v["take_profit"] for v in matching) / len(matching)
+            if counts[direction] >= self.majority_threshold:
+                # MAJORITY ACHIEVED
+                matching_votes = [v for _, v in votes if v["decision"] == direction]
+                avg_entry = sum(v["entry"] for v in matching_votes) / len(matching_votes)
+                avg_sl = sum(v["stop_loss"] for v in matching_votes) / len(matching_votes)
+                avg_tp = sum(v["take_profit"] for v in matching_votes) / len(matching_votes)
                 
-                reasons = [f"{v['agent_emoji']}{v['reason'][:40]}" for v in matching]
+                reasons = [f"{v['agent_emoji']}{v['reason'][:40]}" for v in matching_votes]
+                
+                confidence = "HIGH" if counts[direction] == total else "MEDIUM"
                 
                 return {
                     "decision": direction,
@@ -439,18 +464,13 @@ class TradingCouncil:
                     "stop_loss": round(avg_sl, 5),
                     "take_profit": round(avg_tp, 5),
                     "reason": " | ".join(reasons),
-                    "confidence": "UNANIMOUS",
+                    "confidence": confidence,
                     "vote_counts": counts,
                     "tally": tally,
                     "debate_happened": self.last_debate is not None,
                 }
         
-        # NOT unanimous — no trade
-        dissenters = []
-        for agent, vote in votes:
-            if vote["decision"] != "HOLD":
-                dissenters.append(f"{vote['agent_emoji']}{vote['agent_id'].upper()}:{vote['decision']}")
-        
+        # No majority — no trade
         reason_parts = []
         if counts["BUY"] > 0:
             reason_parts.append(f"BUY×{counts['BUY']}")
@@ -464,7 +484,7 @@ class TradingCouncil:
             "entry": 0,
             "stop_loss": 0,
             "take_profit": 0,
-            "reason": f"No unanimous agreement ({' '.join(reason_parts)}) — trade skipped",
+            "reason": f"No majority ({' '.join(reason_parts)}) — trade skipped",
             "confidence": "NONE",
             "vote_counts": counts,
             "tally": tally,
@@ -475,16 +495,19 @@ class TradingCouncil:
         """
         Full council decision flow.
         
-        STRICT FLOW:
-        1. All agents vote independently
-        2. If unanimous on BUY/SELL → TRADE immediately
-        3. If NOT unanimous → debate → re-vote
-        4. After debate: unanimous → TRADE
-        5. After debate: still not unanimous → SKIP (no trade)
+        1. All agents vote independently (each with own model)
+        2. If majority on BUY/SELL → TRADE immediately
+        3. If no majority → debate → re-vote
+        4. After debate: majority → TRADE
+        5. After debate: still no majority → SKIP
         """
         self.last_debate = None
         
         self.log("🏛️  COUNCIL SESSION STARTED", "council")
+        
+        # Log which models each agent uses
+        for agent in self.agents:
+            self.log(f"  {agent['emoji']} {agent['id'].upper()} → {agent['model']}", "council")
         
         # Step 1: Collect votes
         self.log("📋 Phase 1: Independent voting...", "council")
@@ -493,17 +516,21 @@ class TradingCouncil:
         
         self.log(
             f"📊 Votes: BUY={tally['counts']['BUY']} SELL={tally['counts']['SELL']} "
-            f"HOLD={tally['counts']['HOLD']}",
+            f"HOLD={tally['counts']['HOLD']} | Need {self.majority_threshold}/{tally['total']} for trade",
             "council"
         )
         
-        # Step 2: Check if unanimous
-        if tally["is_unanimous"] and tally["majority_dir"] in ["BUY", "SELL"]:
-            self.log(f"✅ UNANIMOUS {tally['majority_dir']} — Trade approved!", "council")
+        # Step 2: Check for majority
+        if tally["has_majority"] and tally["majority_dir"] in ["BUY", "SELL"]:
+            self.log(f"✅ MAJORITY {tally['majority_dir']} ({tally['majority_count']}/{tally['total']}) — Trade approved!", "council")
             return self.get_consensus(votes)
         
-        # Step 3: Not unanimous → debate
-        self.log("🗣️  Not unanimous — Starting debate...", "council")
+        # Step 3: No majority → debate
+        if self.debate_rounds <= 0:
+            self.log("❌ No majority, debate disabled — Trade SKIPPED", "council")
+            return self.get_consensus(votes)
+        
+        self.log("🗣️  No majority — Starting debate...", "council")
         
         for round_num in range(self.debate_rounds):
             self.log(f"🔄 Debate round {round_num + 1}/{self.debate_rounds}", "council")
@@ -516,11 +543,11 @@ class TradingCouncil:
                 "council"
             )
             
-            # Check if unanimous after debate
-            if tally["is_unanimous"] and tally["majority_dir"] in ["BUY", "SELL"]:
-                self.log(f"✅ UNANIMOUS after debate: {tally['majority_dir']} — Trade approved!", "council")
+            # Check for majority after debate
+            if tally["has_majority"] and tally["majority_dir"] in ["BUY", "SELL"]:
+                self.log(f"✅ MAJORITY after debate: {tally['majority_dir']} — Trade approved!", "council")
                 return self.get_consensus(votes)
         
-        # Step 4: Still not unanimous → no trade
-        self.log("❌ No unanimous consensus — Trade SKIPPED", "council")
+        # Step 4: Still no majority → no trade
+        self.log("❌ No majority after debate — Trade SKIPPED", "council")
         return self.get_consensus(votes)
