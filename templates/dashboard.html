@@ -642,7 +642,14 @@ function renderLog(msg, level) {
   }
 
   div.className = cssClass;
-  div.textContent = html;
+
+  // Use innerHTML for loading (has spinner HTML), textContent for everything else
+  if (level === "loading") {
+    div.innerHTML = html;
+  } else {
+    div.textContent = html;
+  }
+
   feed.appendChild(div);
 
   // Auto-scroll

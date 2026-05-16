@@ -357,14 +357,23 @@ class TradingAgent:
             
             if self.use_council and self.council:
                 # ── Round Table Mode ──
+                self.council.is_running = self.is_running
                 consensus = self.council.decide(window, row["close"])
-                self.last_council_result = consensus
-                decision = consensus
-                
-                if consensus["decision"] in ["BUY", "SELL"] and consensus.get("entry", 0) > 0:
-                    self.log(f"✅ RESULT: {consensus['decision']} @ {consensus['entry']} | SL: {consensus['stop_loss']} | TP: {consensus['take_profit']}", "decision")
+
+                if not self.is_running:
+                    break
+
+                if consensus:
+                    self.last_council_result = consensus
+                    decision = consensus
+
+                    if consensus["decision"] in ["BUY", "SELL"] and consensus.get("entry", 0) > 0:
+                        self.log(f"✅ RESULT: {consensus['decision']} @ {consensus['entry']} | SL: {consensus['stop_loss']} | TP: {consensus['take_profit']}", "decision")
+                    else:
+                        self.log(f"⏭️  RESULT: HOLD — {consensus.get('reason', 'No trade')}", "decision")
                 else:
-                    self.log(f"⏭️  RESULT: HOLD — {consensus.get('reason', 'No trade')}", "decision")
+                    self.log("⏭️  RESULT: No response from council — skipping", "error")
+                    decision = None
             else:
                 # ── Single Agent Mode ──
                 prompt = self.build_prompt(window, row["close"])
@@ -404,6 +413,11 @@ class TradingAgent:
                     result["trade_action"] = "OPENED"
         
         self.current_index += 1
+        
+        # Show progress every candle
+        remaining = len(self.df) - self.current_index
+        self.log(f"✓ Candle #{self.current_index - 1} done | {remaining:,} remaining", "info")
+        
         return result
     
     def run_backtest(self, max_candles=None):
@@ -419,19 +433,24 @@ class TradingAgent:
                 time.sleep(0.5)
                 continue
             
-            result = self.process_candle()
-            processed += 1
-            
-            if result.get("status") == "END":
-                break
-            
-            # Check if we've hit max candles
-            if max_candles and processed >= max_candles:
-                break
-            
-            # Only sleep if there's no active trade (to speed up backtest)
-            if not self.active_trade:
-                time.sleep(self.speed)
+            try:
+                result = self.process_candle()
+                processed += 1
+                
+                if result.get("status") == "END":
+                    break
+                
+                # Check if we've hit max candles
+                if max_candles and processed >= max_candles:
+                    break
+                
+                # Only sleep if there's no active trade (to speed up backtest)
+                if not self.active_trade:
+                    time.sleep(self.speed)
+            except Exception as e:
+                self.log(f"❌ Error processing candle #{self.current_index}: {e}", "error")
+                self.current_index += 1
+                continue
         
         # Close any remaining trade
         if self.active_trade and self.active_trade.status == "OPEN":
