@@ -24,10 +24,12 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 .main { display: flex; height: calc(100vh - 48px); }
 
 /* ─── Left Sidebar ─── */
-.sidebar { width: 280px; min-width: 280px; background: #111118; border-right: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow-y: auto; transition: width 0.3s, min-width 0.3s; position: relative; }
+.sidebar { width: 280px; min-width: 280px; background: #111118; border-right: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; transition: width 0.3s; }
 .sidebar.collapsed { width: 0; min-width: 0; overflow: hidden; }
-.sidebar-toggle { position: absolute; right: -28px; top: 8px; z-index: 10; background: #1a1a2e; border: 1px solid #2a2a4a; color: #888; padding: 4px 8px; cursor: pointer; border-radius: 0 4px 4px 0; font-size: 12px; transition: color 0.2s; }
-.sidebar-toggle:hover { color: #00d4ff; }
+.sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; background: #16213e; border-bottom: 1px solid #2a2a4a; }
+.sidebar-header span { font-size: 11px; color: #00d4ff; font-weight: 600; }
+.sidebar-toggle { background: none; border: 1px solid #2a2a4a; color: #888; padding: 3px 8px; cursor: pointer; border-radius: 4px; font-size: 11px; }
+.sidebar-toggle:hover { color: #00d4ff; border-color: #00d4ff; }
 .section { padding: 12px 14px; border-bottom: 1px solid #1a1a24; }
 .section-title { font-size: 10px; color: #556; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; font-weight: 600; }
 .field { margin-bottom: 10px; }
@@ -169,7 +171,10 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 
   <!-- ═══ LEFT SIDEBAR: ALL SETTINGS ═══ -->
   <div class="sidebar" id="sidebar">
-    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Minimize sidebar">◀</button>
+    <div class="sidebar-header">
+      <span>⚙️ Settings</span>
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">◀ Hide</button>
+    </div>
 
     <!-- API Key -->
     <div class="section">
@@ -317,7 +322,11 @@ function toggleSidebar() {
   const sb = document.getElementById("sidebar");
   const btn = document.getElementById("sidebarToggle");
   sb.classList.toggle("collapsed");
-  btn.textContent = sb.classList.contains("collapsed") ? "▶" : "◀";
+  if (sb.classList.contains("collapsed")) {
+    btn.textContent = "▶ Show";
+  } else {
+    btn.textContent = "◀ Hide";
+  }
 }
 
 fetch("/api/config").then(r => r.json()).then(cfg => {
