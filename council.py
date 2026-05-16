@@ -164,7 +164,7 @@ class TradingCouncil:
                     "max_tokens": max_tokens,
                     "temperature": self.config.get("temperature", 0.3),
                 },
-                timeout=60,
+                timeout=120,
             )
             if resp.status_code != 200:
                 self.log(f"API error ({model}): {resp.status_code}", "error")

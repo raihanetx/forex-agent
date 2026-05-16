@@ -189,7 +189,7 @@ class TradingAgent:
                     "max_tokens": self.config["max_tokens"],
                     "temperature": self.config["temperature"],
                 },
-                timeout=60,
+                timeout=120,
             )
             
             if resp.status_code != 200:
