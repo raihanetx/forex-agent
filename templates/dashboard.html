@@ -23,12 +23,8 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 /* ─── Main Layout ─── */
 .main { display: flex; height: calc(100vh - 48px); }
 
-/* ─── Left Sidebar (collapsible) ─── */
-.sidebar { width: 280px; min-width: 280px; background: #111118; border-right: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow-y: auto; transition: width 0.3s; }
-.sidebar.collapsed { width: 0; min-width: 0; overflow: hidden; }
-.sidebar-toggle { position: absolute; left: 280px; top: 54px; z-index: 10; background: #1a1a2e; border: 1px solid #2a2a4a; color: #888; padding: 4px 6px; cursor: pointer; border-radius: 0 4px 4px 0; font-size: 12px; }
-.sidebar.collapsed + .sidebar-toggle { left: 0; }
-
+/* ─── Left Sidebar ─── */
+.sidebar { width: 280px; min-width: 280px; background: #111118; border-right: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow-y: auto; }
 .section { padding: 12px 14px; border-bottom: 1px solid #1a1a24; }
 .section-title { font-size: 10px; color: #556; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; font-weight: 600; }
 .field { margin-bottom: 10px; }
@@ -58,14 +54,15 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 /* Agent cards */
 .agent-card { background: #1a1a24; border: 1px solid #2a2a4a; border-radius: 6px; padding: 8px; margin-bottom: 6px; }
 .agent-header { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
-.agent-emoji { font-size: 14px; }
-.agent-name { font-size: 10px; color: #888; font-weight: 600; }
+.agent-num { font-size: 12px; font-weight: 700; color: #00d4ff; }
 .agent-card select { font-size: 10px; padding: 3px 5px; }
 
-/* ─── Center: Live Feed ─── */
+/* ─── Center: Meeting Feed ─── */
 .feed-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.feed-header { padding: 8px 16px; background: #111118; border-bottom: 1px solid #1a1a24; display: flex; justify-content: space-between; align-items: center; }
-.feed-header .stats { display: flex; gap: 16px; font-size: 11px; }
+
+/* Stats bar */
+.stats-bar { padding: 8px 16px; background: #111118; border-bottom: 1px solid #1a1a24; display: flex; justify-content: space-between; align-items: center; }
+.stats-left { display: flex; gap: 16px; font-size: 11px; }
 .stat { text-align: center; }
 .stat .val { font-size: 16px; font-weight: 700; color: #00d4ff; }
 .stat .lbl { font-size: 9px; color: #556; text-transform: uppercase; }
@@ -74,18 +71,47 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 .progress { height: 2px; background: #1a1a24; }
 .progress-fill { height: 100%; background: linear-gradient(90deg, #00d4ff, #4caf50); transition: width 0.3s; }
 
-.feed { flex: 1; overflow-y: auto; padding: 10px 16px; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; line-height: 1.7; }
-.log { padding: 1px 0; border-bottom: 1px solid #111; }
-.log-info { color: #666; }
-.log-thinking { color: #ce93d8; background: #1a0a24; padding: 3px 8px; border-radius: 4px; margin: 2px 0; display: block; }
-.log-decision { color: #80cbc4; font-weight: 600; }
-.log-trade { color: #ffd54f; font-weight: 700; background: #2a2a0a; padding: 3px 8px; border-radius: 4px; margin: 2px 0; display: block; }
+/* Feed container */
+.feed { flex: 1; overflow-y: auto; padding: 12px 16px; }
+
+/* ── Log line styles ── */
+.log { padding: 1px 0; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; line-height: 1.7; }
+
+/* Candle data block */
+.log-data-header { color: #4fc3f7; font-weight: 700; background: #0a1a2a; padding: 6px 10px; border-radius: 5px; border-left: 3px solid #4fc3f7; margin: 6px 0 2px; display: block; }
+.log-data-row { color: #78909c; font-size: 11px; padding: 0 10px; display: block; }
+.log-data-price { color: #4fc3f7; font-weight: 600; padding: 2px 10px; display: block; }
+
+/* Agent opinion blocks */
+.log-agent-header { color: #e0e0e0; font-weight: 700; background: #1a1a24; padding: 6px 10px; border-radius: 5px; margin: 4px 0 2px; display: block; border-left: 3px solid #607d8b; }
+.log-agent-reasoning { color: #ce93d8; font-style: italic; padding: 2px 14px; display: block; font-size: 11px; }
+.log-agent-position { font-weight: 700; padding: 3px 14px; border-radius: 3px; margin: 2px 0; display: block; }
+.log-agent-buy { color: #4caf50; background: #0a2a0a; }
+.log-agent-sell { color: #f44336; background: #2a0a0a; }
+.log-agent-hold { color: #ffeb3b; background: #2a2a0a; }
+.log-agent-detail { color: #78909c; font-size: 11px; padding: 1px 14px; display: block; }
+
+/* Debate blocks */
+.log-debate-header { color: #ffab40; font-weight: 700; background: #1a1400; padding: 6px 10px; border-radius: 5px; border-left: 3px solid #ffab40; margin: 6px 0 2px; display: block; }
+.log-debate-speaker { color: #ffcc80; padding: 2px 14px; display: block; font-size: 11px; }
+.log-debate-changed { color: #ff9800; font-weight: 700; padding: 2px 14px; display: block; }
+.log-debate-sticks { color: #78909c; padding: 2px 14px; display: block; font-size: 11px; }
+
+/* Consensus block */
+.log-consensus { color: #e0e0e0; font-weight: 700; background: #1a1a2e; padding: 8px 12px; border-radius: 6px; border: 1px solid #2a2a4a; margin: 8px 0; display: block; text-align: center; font-size: 14px; }
+.log-consensus-approved { border-color: #4caf50; color: #4caf50; }
+.log-consensus-denied { border-color: #f44336; color: #f44336; }
+
+/* Trade blocks */
+.log-trade-open { color: #ffd54f; font-weight: 700; background: #2a2a0a; padding: 6px 10px; border-radius: 5px; border-left: 3px solid #ffd54f; margin: 4px 0; display: block; }
+.log-trade-close { font-weight: 700; padding: 6px 10px; border-radius: 5px; margin: 4px 0; display: block; }
+.log-trade-win { color: #4caf50; background: #0a2a0a; border-left: 3px solid #4caf50; }
+.log-trade-loss { color: #f44336; background: #2a0a0a; border-left: 3px solid #f44336; }
+
+/* Generic levels */
 .log-system { color: #4fc3f7; }
 .log-error { color: #ef5350; }
-.log-model { color: #556; font-style: italic; }
-.log-council { color: #bb86fc; font-weight: 600; background: #1a0a2e; padding: 4px 8px; border-radius: 4px; margin: 2px 0; border-left: 3px solid #bb86fc; display: block; }
-.log-agent_vote { color: #80cbc4; padding: 1px 0 1px 8px; display: block; }
-.log-debate { color: #ffab40; background: #1a1400; padding: 2px 8px; border-radius: 3px; margin: 1px 0; display: block; font-size: 11px; line-height: 1.5; }
+.log-info { color: #556; font-size: 11px; }
 
 /* ─── Right Sidebar: Trades ─── */
 .rightbar { width: 240px; min-width: 240px; background: #111118; border-left: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow: hidden; }
@@ -95,15 +121,11 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 /* Council panel */
 .council-box { margin: 8px; background: #1a1a24; border: 1px solid #2a2a4a; border-radius: 6px; padding: 8px; display: none; }
 .council-box h4 { font-size: 10px; color: #bb86fc; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-.vote-bar { display: flex; gap: 4px; margin-bottom: 4px; }
+.vote-bar { display: flex; gap: 4px; margin-bottom: 4px; flex-wrap: wrap; }
 .vote-pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
 .vote-buy { background: #0a3d0a; color: #4caf50; }
 .vote-sell { background: #3d0a0a; color: #f44336; }
 .vote-hold { background: #3d3d0a; color: #ffeb3b; }
-.conf-badge { font-size: 9px; padding: 1px 6px; border-radius: 6px; font-weight: 600; }
-.conf-high { background: #0a3d0a; color: #4caf50; }
-.conf-medium { background: #3d3d0a; color: #ffeb3b; }
-.conf-none { background: #3d0a0a; color: #f44336; }
 
 /* Active trade */
 .active-box { margin: 0 8px 8px; background: #1a2a1a; border: 1px solid #4caf50; border-radius: 6px; padding: 8px; display: none; }
@@ -142,47 +164,49 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 
 <div class="main">
 
-  <!-- Left Sidebar -->
+  <!-- ═══ LEFT SIDEBAR: ALL SETTINGS ═══ -->
   <div class="sidebar" id="sidebar">
-    <!-- API -->
+
+    <!-- API Key -->
     <div class="section">
-      <div class="section-title">🔑 API</div>
+      <div class="section-title">🔑 API Key</div>
       <div class="field">
-        <label>Kilo Gateway API Key</label>
-        <input type="password" id="apiKey" placeholder="Enter API key...">
+        <input type="password" id="apiKey" placeholder="Kilo Gateway API key...">
       </div>
       <button class="btn btn-primary btn-sm" style="width:100%" onclick="saveApiKey()">Save & Fetch Models</button>
     </div>
 
-    <!-- Data -->
+    <!-- Data File -->
     <div class="section">
-      <div class="section-title">📊 Data</div>
+      <div class="section-title">📊 Data File</div>
       <div class="field">
         <select id="dataFile"><option>Loading...</option></select>
       </div>
     </div>
 
-    <!-- Model -->
+    <!-- Default Model -->
     <div class="section">
-      <div class="section-title">🤖 Default Model</div>
+      <div class="section-title">🤖 Default Model (Single Mode)</div>
       <div id="modelList" class="field" style="max-height:80px;overflow-y:auto;background:#1a1a24;border-radius:5px;padding:4px">
         <div style="font-size:10px;color:#556;padding:4px">kilo-auto/free</div>
       </div>
     </div>
 
-    <!-- Council -->
+    <!-- Council Mode -->
     <div class="section">
-      <div class="section-title">🏛️ Council</div>
+      <div class="section-title">🏛️ Round Table Mode</div>
       <div class="toggle-row">
-        <label>Multi-Agent Roundtable</label>
+        <label>Enable Round Table</label>
         <div class="toggle"><input type="checkbox" id="useCouncil" checked><span class="slider"></span></div>
       </div>
       <div id="councilSettings">
         <div class="field">
-          <label>Agents</label>
-          <select id="numAgents">
-            <option value="3" selected>3 (majority = 2)</option>
-            <option value="5">5 (majority = 3)</option>
+          <label>Number of Agents</label>
+          <select id="numAgents" onchange="onNumAgentsChange()">
+            <option value="2">2 agents</option>
+            <option value="3" selected>3 agents</option>
+            <option value="4">4 agents</option>
+            <option value="5">5 agents</option>
           </select>
         </div>
         <div class="field">
@@ -191,23 +215,27 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
             <option value="0">No discussion</option>
             <option value="1" selected>1 round</option>
             <option value="2">2 rounds</option>
+            <option value="3">3 rounds</option>
           </select>
         </div>
-        <div class="section-title" style="margin-top:8px">Agent Models</div>
+        <div class="section-title" style="margin-top:6px">Model for Each Agent</div>
         <div id="agentModels"></div>
-        <div style="font-size:9px;color:#445;margin-top:4px">💡 Different models = diverse opinions</div>
+        <div style="font-size:9px;color:#556;margin-top:6px;padding:4px 6px;background:#1a1a24;border-radius:4px">
+          ⚖️ Same data + same prompt → different models → different opinions<br>
+          Must ALL agree unanimously. No majority vote.
+        </div>
       </div>
     </div>
 
-    <!-- Settings -->
+    <!-- Backtest Settings -->
     <div class="section">
-      <div class="section-title">⚙️ Settings</div>
+      <div class="section-title">⚙️ Backtest</div>
       <div class="field">
         <label>Window (candles)</label>
         <input type="number" id="windowSize" value="20" min="5" max="100">
       </div>
       <div class="field">
-        <label>Max Candles (blank=all)</label>
+        <label>Max Candles (blank = all)</label>
         <input type="number" id="maxCandles" placeholder="All">
       </div>
       <div class="field">
@@ -223,15 +251,15 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
         <button class="btn btn-warning" id="btnPause" onclick="pauseAgent()" disabled>⏸</button>
         <button class="btn btn-danger" id="btnStop" onclick="stopAgent()" disabled>⏹</button>
       </div>
-      <button class="btn btn-primary btn-sm" style="width:100%;margin-top:6px" onclick="saveTrades()">💾 Save CSV</button>
+      <button class="btn btn-primary btn-sm" style="width:100%;margin-top:6px" onclick="saveTrades()">💾 Export CSV</button>
     </div>
   </div>
 
-  <!-- Center: Live Feed -->
+  <!-- ═══ CENTER: MEETING FEED ═══ -->
   <div class="feed-area">
     <div class="progress"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-    <div class="feed-header">
-      <div class="stats">
+    <div class="stats-bar">
+      <div class="stats-left">
         <div class="stat"><div class="val" id="statTotal">0</div><div class="lbl">Trades</div></div>
         <div class="stat stat-win"><div class="val" id="statWins">0</div><div class="lbl">Wins</div></div>
         <div class="stat stat-loss"><div class="val" id="statLosses">0</div><div class="lbl">Losses</div></div>
@@ -241,17 +269,17 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
       </div>
     </div>
     <div class="feed" id="feed">
-      <div class="log log-system">⚡ Forex LLM Trading Agent — Roundtable Mode</div>
-      <div class="log log-system">Configure API key and settings in the left panel, then press Start.</div>
+      <div class="log log-system">⚡ Forex LLM Trading Agent — Round Table Mode</div>
+      <div class="log log-system">Set up your API key and models in the left panel, then press Start.</div>
     </div>
   </div>
 
-  <!-- Right Sidebar: Trades -->
+  <!-- ═══ RIGHT SIDEBAR: TRADES ═══ -->
   <div class="rightbar">
     <div class="rightbar-header"><h3>📜 Trades</h3></div>
 
     <div class="council-box" id="councilBox">
-      <h4>🏛️ Council Votes</h4>
+      <h4>🏛️ Latest Vote</h4>
       <div class="vote-bar" id="voteBar"></div>
       <div id="councilDecision" style="font-size:10px;color:#888;margin-top:4px"></div>
     </div>
@@ -270,21 +298,21 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 let currentModel = "kilo-auto/free";
 let availableModels = [];
 let pollInterval = null;
+let lastLogCount = 0;
 
-const AGENTS = [
-  { id: "alpha", name: "Alpha — Trend", emoji: "🔺" },
-  { id: "beta",  name: "Beta — Momentum", emoji: "⚡" },
-  { id: "gamma", name: "Gamma — Price Action", emoji: "📐" },
-  { id: "delta", name: "Delta — Volume", emoji: "📊" },
-  { id: "epsilon", name: "Epsilon — Contrarian", emoji: "🔄" },
+const AGENTS_META = [
+  { id: "agent_1", num: 1, emoji: "1️⃣" },
+  { id: "agent_2", num: 2, emoji: "2️⃣" },
+  { id: "agent_3", num: 3, emoji: "3️⃣" },
+  { id: "agent_4", num: 4, emoji: "4️⃣" },
+  { id: "agent_5", num: 5, emoji: "5️⃣" },
 ];
 
-// Init — load config, restore from localStorage if Space restarted
+// ═══ Init ═══
 fetch("/api/config").then(r => r.json()).then(cfg => {
-  // Restore saved settings from browser localStorage
   const saved = JSON.parse(localStorage.getItem("forex_config") || "{}");
   const merged = {...cfg, ...saved};
-  
+
   document.getElementById("apiKey").value = merged.api_key || "";
   document.getElementById("windowSize").value = merged.window_size || 20;
   currentModel = merged.model || "kilo-auto/free";
@@ -294,9 +322,8 @@ fetch("/api/config").then(r => r.json()).then(cfg => {
   document.getElementById("councilSettings").style.display = merged.use_council ? "block" : "none";
   updateMode();
   loadDataFiles();
-  renderAgents(merged.agent_models || {});
-  
-  // Push restored config back to server
+  renderAgentModels(merged.agent_models || {});
+
   if (saved.api_key) {
     postConfig({
       api_key: saved.api_key,
@@ -310,14 +337,14 @@ fetch("/api/config").then(r => r.json()).then(cfg => {
   }
 });
 
-// Events
+// ═══ Events ═══
 document.getElementById("useCouncil").addEventListener("change", function() {
   document.getElementById("councilSettings").style.display = this.checked ? "block" : "none";
   updateMode();
   postConfig({use_council: this.checked});
 });
 document.getElementById("numAgents").addEventListener("change", function() {
-  renderAgents(getAgentModels());
+  renderAgentModels(getAgentModels());
   postConfig({num_agents: parseInt(this.value)});
 });
 document.getElementById("debateRounds").addEventListener("change", function() {
@@ -327,17 +354,24 @@ document.getElementById("debateRounds").addEventListener("change", function() {
 function updateMode() {
   const b = document.getElementById("modeBadge");
   const c = document.getElementById("useCouncil").checked;
-  if (c) { b.textContent = "COUNCIL"; b.className = "badge badge-council"; }
+  if (c) { b.textContent = "ROUND TABLE"; b.className = "badge badge-council"; }
   else { b.textContent = "SINGLE"; b.className = "badge badge-single"; }
 }
 
-function renderAgents(saved) {
+function onNumAgentsChange() {
+  renderAgentModels(getAgentModels());
+  postConfig({num_agents: parseInt(document.getElementById("numAgents").value)});
+}
+
+function renderAgentModels(saved) {
   const n = parseInt(document.getElementById("numAgents").value);
   const el = document.getElementById("agentModels");
-  el.innerHTML = AGENTS.slice(0, n).map(a => {
+  el.innerHTML = AGENTS_META.slice(0, n).map(a => {
     const m = (saved || {})[a.id] || currentModel;
     return `<div class="agent-card">
-      <div class="agent-header"><span class="agent-emoji">${a.emoji}</span><span class="agent-name">${a.name}</span></div>
+      <div class="agent-header">
+        <span class="agent-num">Agent ${a.num}</span>
+      </div>
       <select id="am_${a.id}" onchange="onAgentModelChange()">
         ${availableModels.length > 0
           ? availableModels.map(x => `<option value="${x.id}" ${x.id===m?'selected':''}>${x.name||x.id}</option>`).join("")
@@ -349,7 +383,8 @@ function renderAgents(saved) {
 
 function getAgentModels() {
   const r = {};
-  AGENTS.slice(0, parseInt(document.getElementById("numAgents").value)).forEach(a => {
+  const n = parseInt(document.getElementById("numAgents").value);
+  AGENTS_META.slice(0, n).forEach(a => {
     const s = document.getElementById(`am_${a.id}`);
     if (s) r[a.id] = s.value;
   });
@@ -381,7 +416,7 @@ function fetchModels(key) {
         el.innerHTML = d.models.map(m =>
           `<div style="padding:3px 6px;font-size:10px;cursor:pointer;border-radius:3px;color:${m.id===currentModel?'#00d4ff':'#888'};background:${m.id===currentModel?'#0a3d4d':'transparent'}" onclick="selModel('${m.id}')">${m.name||m.id}</div>`
         ).join("");
-        renderAgents(getAgentModels());
+        renderAgentModels(getAgentModels());
       } else {
         el.innerHTML = '<div style="font-size:10px;color:#556;padding:4px">No free models found</div>';
       }
@@ -395,24 +430,29 @@ function selModel(id) {
 }
 
 function postConfig(data) {
-  // Save to browser localStorage (persists across Space restarts)
   const saved = JSON.parse(localStorage.getItem("forex_config") || "{}");
   Object.assign(saved, data);
   localStorage.setItem("forex_config", JSON.stringify(saved));
-  
   fetch("/api/config", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data)});
 }
 
+// ═══ Controls ═══
 function startAgent() {
   const df = document.getElementById("dataFile").value;
   if (!df) return alert("Select data file");
+  const numAgents = parseInt(document.getElementById("numAgents").value);
+  const selected = AGENTS_META.slice(0, numAgents).map(a => a.id);
   postConfig({
     model: currentModel, window_size: parseInt(document.getElementById("windowSize").value),
     use_council: document.getElementById("useCouncil").checked,
-    num_agents: parseInt(document.getElementById("numAgents").value),
+    num_agents: numAgents,
+    selected_agents: selected,
     debate_rounds: parseInt(document.getElementById("debateRounds").value),
     agent_models: getAgentModels(),
   });
+  // Clear feed for fresh start
+  document.getElementById("feed").innerHTML = "";
+  lastLogCount = 0;
   fetch("/api/start", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({
     data_file: df,
     max_candles: document.getElementById("maxCandles").value ? parseInt(document.getElementById("maxCandles").value) : null,
@@ -437,6 +477,125 @@ function setRunning(r) {
 function startPoll() { if (pollInterval) clearInterval(pollInterval); pollInterval = setInterval(poll, 1000); }
 function stopPoll() { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } }
 
+// ═══ Render Log Lines ═══
+function renderLog(msg, level) {
+  const feed = document.getElementById("feed");
+  const div = document.createElement("div");
+
+  // Parse the message and apply rich formatting based on content patterns
+  let html = "";
+  let cssClass = "log";
+
+  if (level === "council") {
+    // Meeting phase headers
+    if (msg.includes("ROUNDTABLE MEETING STARTED") || msg.includes("═")) {
+      cssClass += " log-debate-header";
+      html = msg;
+    } else if (msg.includes("PHASE 1") || msg.includes("PHASE 2") || msg.includes("PHASE 3")) {
+      cssClass += " log-debate-header";
+      html = msg;
+    } else {
+      cssClass += " log-debate-speaker";
+      html = msg;
+    }
+  }
+  else if (level === "agent_vote") {
+    // Agent headers and their statements
+    if (msg.match(/Agent \d+.*analyzing/) || msg.match(/Agent \d+.*presenting/)) {
+      cssClass += " log-agent-header";
+      html = msg;
+    } else if (msg.match(/Agent \d+.*\[/)) {
+      cssClass += " log-agent-header";
+      html = msg;
+    } else {
+      cssClass += " log-agent-detail";
+      html = msg;
+    }
+  }
+  else if (level === "thinking") {
+    cssClass += " log-agent-reasoning";
+    html = "💭 " + msg;
+  }
+  else if (level === "decision") {
+    if (msg.includes("→ BUY")) {
+      cssClass += " log-agent-position log-agent-buy";
+    } else if (msg.includes("→ SELL")) {
+      cssClass += " log-agent-position log-agent-sell";
+    } else if (msg.includes("→ HOLD")) {
+      cssClass += " log-agent-position log-agent-hold";
+    } else if (msg.includes("UNANIMOUS")) {
+      cssClass += " log-consensus log-consensus-approved";
+    } else if (msg.includes("NO UNANIMOUS") || msg.includes("No trade")) {
+      cssClass += " log-consensus log-consensus-denied";
+    } else {
+      cssClass += " log-agent-position";
+    }
+    html = msg;
+  }
+  else if (level === "debate") {
+    if (msg.includes("CHANGED MIND")) {
+      cssClass += " log-debate-changed";
+    } else if (msg.includes("STICKS WITH")) {
+      cssClass += " log-debate-sticks";
+    } else if (msg.match(/Agent \d+ discussing/)) {
+      cssClass += " log-debate-header";
+      html = msg;
+    } else {
+      cssClass += " log-debate-speaker";
+      html = msg;
+    }
+  }
+  else if (level === "trade") {
+    if (msg.includes("OPENED")) {
+      cssClass += " log-trade-open";
+    } else if (msg.includes("CLOSED")) {
+      cssClass += msg.includes("WIN") ? " log-trade-close log-trade-win" : " log-trade-close log-trade-loss";
+    } else {
+      cssClass += " log-trade-open";
+    }
+    html = msg;
+  }
+  else if (level === "info") {
+    // Candle info lines — check if it contains data table
+    if (msg.match(/^\d{4}-\d{2}-\d{2}/)) {
+      cssClass += " log-data-row";
+    } else if (msg.includes("Candle #") || msg.includes("Price:")) {
+      cssClass += " log-data-price";
+    } else {
+      cssClass += " log-info";
+    }
+    html = msg;
+  }
+  else if (level === "system") {
+    cssClass += " log-system";
+    html = msg;
+  }
+  else if (level === "error") {
+    cssClass += " log-error";
+    html = "❌ " + msg;
+  }
+  else if (level === "model") {
+    cssClass += " log-info";
+    html = msg;
+  }
+  else {
+    cssClass += " log-info";
+    html = msg;
+  }
+
+  div.className = cssClass;
+  div.textContent = html;
+  feed.appendChild(div);
+
+  // Auto-scroll
+  const bottom = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50;
+  if (bottom) feed.scrollTop = feed.scrollHeight;
+
+  // Limit feed size
+  while (feed.children.length > 800) feed.removeChild(feed.firstChild);
+}
+
+// ═══ Poll ═══
 function poll() {
   fetch("/api/status").then(r => r.json()).then(d => {
     // Progress
@@ -463,8 +622,8 @@ function poll() {
       if (v.HOLD > 0) h += `<span class="vote-pill vote-hold">HOLD ×${v.HOLD}</span>`;
       document.getElementById("voteBar").innerHTML = h;
       const conf = d.council_info.confidence || "NONE";
-      document.getElementById("councilDecision").innerHTML =
-        `<span class="conf-badge conf-${conf.toLowerCase()}">${conf}</span> ${d.council_info.decision}`;
+      const icon = conf === "UNANIMOUS" ? "✅" : "❌";
+      document.getElementById("councilDecision").innerHTML = `${icon} ${conf} → ${d.council_info.decision}`;
     } else { cb.style.display = "none"; }
     // Active trade
     const ab = document.getElementById("activeBox");
@@ -483,18 +642,11 @@ function poll() {
         return `<div class="trade-row ${c}"><span class="trade-dir ${t.direction.toLowerCase()}">#${t.id} ${t.direction}</span><span class="trade-pips ${pc}">${t.pips>0?'+':''}${t.pips}</span></div>`;
       }).join("");
     }
-    // Logs
+    // Render NEW logs only
     if (d.logs && d.logs.length > 0) {
-      const feed = document.getElementById("feed");
-      const bottom = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 30;
-      d.logs.forEach(l => {
-        const div = document.createElement("div");
-        div.className = "log log-" + l.level;
-        div.textContent = l.msg;
-        feed.appendChild(div);
-      });
-      while (feed.children.length > 500) feed.removeChild(feed.firstChild);
-      if (bottom) feed.scrollTop = feed.scrollHeight;
+      const newLogs = d.logs.slice(lastLogCount);
+      newLogs.forEach(l => renderLog(l.msg, l.level));
+      lastLogCount = d.logs.length;
     }
     // Done
     if (!d.running && !d.paused && d.candle_index > 0) {

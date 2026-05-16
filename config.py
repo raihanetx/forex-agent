@@ -25,6 +25,9 @@ DEFAULT_CONFIG = {
     "num_agents": 3,
     "debate_rounds": 1,
     "consensus_threshold": 0.6,
+    # Which agents participate: ["alpha", "beta", "gamma"] etc.
+    # If empty, defaults to first num_agents from the full list
+    "selected_agents": [],
     # Per-agent model overrides: {"alpha": "model-a", "beta": "model-b", ...}
     "agent_models": {},
 }

@@ -100,6 +100,7 @@ class TradingAgent:
         # Multi-agent council mode
         self.use_council = config.get("use_council", False)
         if self.use_council:
+            # Ensure selected_agents is passed to council
             self.council = TradingCouncil(config)
         else:
             self.council = None
@@ -329,21 +330,18 @@ class TradingAgent:
             window_start = max(0, self.current_index - self.config["window_size"])
             window = self.df.iloc[window_start:self.current_index]
             
-            self.log(f"📊 Candle #{self.current_index} | {timestamp} | Price: {row['close']:.5f}", "info")
+            self.log(f"━━━ Candle #{self.current_index} | {timestamp} | Price: {row['close']:.5f} ━━━", "info")
             
             if self.use_council and self.council:
-                # ── Multi-Agent Council Mode ──
+                # ── Round Table Mode ──
                 consensus = self.council.decide(window, row["close"])
                 self.last_council_result = consensus
                 decision = consensus
                 
-                self.log(
-                    f"🏛️  Council: {consensus['decision']} | Confidence: {consensus['confidence']} | "
-                    f"Votes: {consensus['vote_counts']}",
-                    "decision"
-                )
-                if consensus.get("reason"):
-                    self.log(f"📋 Reason: {consensus['reason'][:200]}", "decision")
+                if consensus["decision"] in ["BUY", "SELL"] and consensus.get("entry", 0) > 0:
+                    self.log(f"✅ RESULT: {consensus['decision']} @ {consensus['entry']} | SL: {consensus['stop_loss']} | TP: {consensus['take_profit']}", "decision")
+                else:
+                    self.log(f"⏭️  RESULT: HOLD — {consensus.get('reason', 'No trade')}", "decision")
             else:
                 # ── Single Agent Mode ──
                 prompt = self.build_prompt(window, row["close"])
@@ -390,7 +388,7 @@ class TradingAgent:
         processed = 0
         
         total = max_candles or (len(self.df) - self.current_index)
-        self.log(f"▶ Starting backtest | {total} candles to process | Window: {self.config['window_size']}", "system")
+        self.log(f"▶ Backtest started | {total:,} candles | Window: {self.config['window_size']}", "system")
         
         while self.is_running and self.current_index < len(self.df):
             if self.is_paused:
