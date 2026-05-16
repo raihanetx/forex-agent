@@ -1,209 +1,167 @@
-# Forex LLM Trading Agent — Project Documentation
+# Forex LLM Trading Agent — Technical Documentation
 
-## 1. Project Overview
-
-**Goal:** Build a Python-based AI trading agent that reads historical Forex candle data and predicts BUY / SELL / HOLD decisions using an LLM as the decision-making brain.
-
-**No ML training. No indicators. No custom models.** The LLM reads raw price data (like a human reading a chart) and makes trading calls.
-
----
-
-## 2. Why LLM Instead of Traditional Indicators?
-
-| Traditional Indicators | LLM Approach |
-|---|---|
-| RSI, MACD, SMA — formula-based, lagging | Reads raw candle patterns like a human trader |
-| Needs parameter tuning (period, multiplier, etc.) | No parameters to tune |
-| Can't adapt to context | Understands context (trend, momentum, rejection) |
-| Generates signals mechanically | Gives reasoning with every decision |
-| Can't explain "why" beyond the formula | Explains reasoning in natural language |
-
-**Bottom line:** Indicators are math. Markets are psychology. LLM reads price action the way a skilled trader does — pattern, context, decision.
-
----
-
-## 3. Data
-
-| Field | Value |
-|---|---|
-| **Source** | HuggingFace: `Raihan1234/forex-1min-ohlc-multi-tf` |
-| **Currency Pair** | EUR/USD |
-| **Timeframe** | M1 (1-minute candles) |
-| **Period** | February 2026 + March 2026 |
-| **Files** | `EURUSD_M1_February_2026.parquet` (28,704 candles) |
-| | `EURUSD_M1_March_2026.parquet` (31,796 candles) |
-| **Columns** | timestamp, open, high, low, close, volume |
-| **Total Candles** | 60,500 |
-
----
-
-## 4. Workflow
+## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    TRADING AGENT LOOP                        │
-│                                                              │
-│  ┌──────────┐     ┌──────────────┐     ┌─────────────────┐  │
-│  │  PARQUET  │────▶│  PYTHON      │────▶│  LLM (Kilo      │  │
-│  │  FILE     │     │  CONVERTER   │     │  Gateway)       │  │
-│  └──────────┘     └──────────────┘     └─────────────────┘  │
-│                         │                     │              │
-│                         │                     ▼              │
-│                         │            ┌─────────────────┐    │
-│                         │            │  BUY / SELL /    │    │
-│                         │            │  HOLD + REASON   │    │
-│                         │            └─────────────────┘    │
-│                         │                     │              │
-│                         ▼                     ▼              │
-│                  ┌──────────────────────────────────┐       │
-│                  │         LOG & TRACK               │       │
-│                  │  - Decision                       │       │
-│                  │  - Entry price                    │       │
-│                  │  - Stop Loss / Take Profit        │       │
-│                  │  - Actual outcome (win/loss)      │       │
-│                  └──────────────────────────────────┘       │
-│                              │                              │
-│                              ▼                              │
-│                  ┌──────────────────────────────────┐       │
-│                  │     PERFORMANCE REPORT            │       │
-│                  │  - Total trades                   │       │
-│                  │  - Win rate                       │       │
-│                  │  - Profit/Loss                    │       │
-│                  └──────────────────────────────────┘       │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        FLASK APP (app.py)                        │
+│  ┌──────────┐  ┌──────────────┐  ┌───────────────────────────┐ │
+│  │  Config   │  │   Agent      │  │   Council (Round Table)   │ │
+│  │  Manager  │  │   (agent.py) │  │   (council.py)            │ │
+│  └──────────┘  └──────────────┘  └───────────────────────────┘ │
+│        │              │                      │                   │
+│        ▼              ▼                      ▼                   │
+│  ┌──────────┐  ┌──────────────┐  ┌───────────────────────────┐ │
+│  │config.json│  │  Kilo API    │  │  Multiple Kilo API calls  │ │
+│  │(persisted)│  │  (single)    │  │  (one per agent)          │ │
+│  └──────────┘  └──────────────┘  └───────────────────────────┘ │
+│                       │                      │                   │
+│                       ▼                      ▼                   │
+│              ┌──────────────────────────────────┐               │
+│              │     PARQUET DATA (EUR/USD M1)     │               │
+│              │     ~60,500 candles               │               │
+│              └──────────────────────────────────┘               │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Step-by-Step:
+## Component Details
 
-1. **Load** — Python reads `.parquet` file
-2. **Window** — Takes last N candles (default: 20)
-3. **Format** — Converts candle data to clean text table
-4. **Prompt** — Sends text table to LLM with trading question
-5. **Decision** — LLM returns BUY/SELL/HOLD + entry/SL/TP + reason
-6. **Log** — Python saves the decision with timestamp and price
-7. **Evaluate** — After processing all candles, calculate win/loss stats
-8. **Repeat** — Slide window to next candle, go to Step 3
+### config.py — Configuration Manager
 
----
+- Loads/saves `config.json`
+- Default values for all settings
+- `fetch_free_models()` — queries Kilo Gateway API for available free models
+- Handles API key, model selection, window size, council settings
 
-## 5. LLM Brain — Kilo Gateway
+### agent.py — Trading Agent
 
-| Field | Value |
-|---|---|
-| **Provider** | Kilo Gateway (kilo.ai) |
-| **Base URL** | `https://api.kilo.ai/api/gateway` |
-| **Endpoint** | `POST /chat/completions` |
-| **API Format** | OpenAI-compatible |
-| **Auth** | `Bearer <API_KEY>` |
-| **Model (recommended)** | `kilo-auto/balanced` (good quality, low cost) |
-| **Role** | Trading decision maker (the "brain") |
-| **Input** | Text table of last 20 OHLCV candles |
-| **Output** | BUY/SELL/HOLD + entry price + SL + TP + reasoning |
+**Classes:**
+- `Trade` — represents a single trade (entry, SL, TP, close, result, pips)
+- `TradingAgent` — main orchestrator
 
-### API Call Format:
+**TradingAgent workflow:**
+1. `load_data(filepath)` — reads parquet file into pandas DataFrame
+2. `process_candle()` — processes one candle at a time:
+   - Checks if active trade gets closed (SL/TP hit)
+   - If no active trade → asks LLM for decision
+   - In Round Table mode → delegates to `council.decide()`
+   - In Single mode → calls LLM directly
+3. `build_prompt()` — creates the text prompt with candle data
+4. `call_llm()` — makes HTTP request to Kilo Gateway API
+5. `parse_decision()` — extracts BUY/SELL/HOLD + prices from LLM response
+6. `run_backtest()` — loops through all candles
+7. `get_stats()` — calculates win rate, pips, profit factor
 
-```python
-POST https://api.kilo.ai/api/gateway/chat/completions
-Headers:
-  Authorization: Bearer <token>
-  Content-Type: application/json
+**Trade tracking:**
+- Only ONE trade active at a time
+- Each candle checks if high/low hits SL or TP
+- If SL hit first → LOSS, if TP hit first → WIN
+- All trades logged with timestamps and outcomes
 
-Body:
+### council.py — Round Table Meeting
+
+**Flow:**
+1. **Opening Statements** — each agent independently analyzes the same data
+2. **Discussion** — agents see each other's opinions and debate
+3. **Final Vote** — must be 100% unanimous
+
+**Key design decisions:**
+- ALL agents receive IDENTICAL data (same candle table)
+- ALL agents receive the SAME system prompt
+- The ONLY difference is which LLM model each agent uses
+- Different models naturally interpret data differently — that's the diversity
+- No artificial "personalities" — just different AIs looking at the same data
+
+**Unanimous consensus:**
+- If ALL agents agree → that's the decision
+- If even ONE disagrees → HOLD (no trade)
+- This prevents false signals — if models can't agree, the market is unclear
+
+### app.py — Flask Web Server
+
+- Serves the dashboard HTML
+- REST API for config, model fetching, data management, agent control
+- Background threading for backtest execution
+- Log buffer (last 500 messages) for live polling
+
+### dashboard.html — Frontend
+
+Single-file frontend (HTML + CSS + JS):
+- **Left sidebar** — settings (collapsible)
+- **Center** — live meeting feed (auto-scrolling)
+- **Right** — trade history and vote summary
+- Polls `/api/status` every second for live updates
+
+## Data Pipeline
+
+```
+HuggingFace Dataset
+       │
+       ▼ (auto-download on first run)
+Parquet Files (data/)
+       │
+       ▼ (pandas read_parquet)
+DataFrame (sorted by timestamp)
+       │
+       ▼ (sliding window of 20 candles)
+Text Table (formatted OHLCV)
+       │
+       ▼ (sent as prompt to LLM)
+LLM Response (DECISION + ENTRY + SL + TP + REASON)
+       │
+       ▼ (parsed and tracked)
+Trade Object (open → monitor → close → log)
+```
+
+## LLM Integration
+
+**Provider:** Kilo Gateway (kilo.ai)
+**Format:** OpenAI-compatible API
+**Endpoint:** `POST /chat/completions`
+
+**Request:**
+```json
 {
-  "model": "kilo-auto/balanced",
+  "model": "kilo-auto/free",
   "messages": [
     {"role": "system", "content": "You are a professional Forex trader..."},
     {"role": "user", "content": "Last 20 candles:\n[OHLCV table]\n\nBUY/SELL/HOLD?"}
   ],
-  "max_tokens": 300,
+  "max_tokens": 800,
   "temperature": 0.3
 }
 ```
 
-### What the LLM receives (example prompt):
+**Response parsing:**
+- Looks for `DECISION:`, `ENTRY:`, `STOP_LOSS:`, `TAKE_PROFIT:`, `REASON:` lines
+- Fallback: scans first 200 chars for BUY/SELL keywords
+- Handles models that put reasoning in `reasoning` field vs `content` field
 
-```
-You are a professional Forex trader analyzing EUR/USD M1 data.
+## Performance Metrics
 
-Last 20 candles:
-Time                Open      High      Low       Close     Volume
-2026-03-15 10:00    1.16520   1.16580   1.16490   1.16560   145
-2026-03-15 10:01    1.16560   1.16610   1.16540   1.16590   167
-...
-
-Current price: 1.16480
-
-Based on price action, should I BUY, SELL, or HOLD?
-Respond in this exact format:
-DECISION: [BUY/SELL/HOLD]
-ENTRY: [price]
-STOP_LOSS: [price]
-TAKE_PROFIT: [price]
-REASON: [1-2 sentence explanation]
-```
-
-### What the LLM responds:
-
-```
-DECISION: SELL
-ENTRY: 1.16480
-STOP_LOSS: 1.16610
-TAKE_PROFIT: 1.16350
-REASON: Price rejected 1.166 resistance twice with 
-increasing volume on bearish candles. Momentum shifting down.
-```
-
----
-
-## 6. File Structure
-
-```
-forex_agent/
-├── EURUSD_M1_February_2026.parquet
-├── EURUSD_M1_March_2026.parquet
-├── main.py                  # Main entry point
-├── data_loader.py           # Read parquet, sliding window
-├── formatter.py             # Convert candles to LLM-friendly text
-├── llm_client.py            # Kilo Gateway API calls
-├── trader.py                # Decision parser + trade evaluator
-├── logger.py                # Log all trades
-├── config.py                # Settings (window size, API config)
-└── results/
-    └── trade_log.csv        # All decisions + outcomes
-```
-
----
-
-## 7. Success Criteria
-
-| Metric | What It Measures |
+| Metric | Description |
 |---|---|
-| **Win Rate** | % of trades that hit TP before SL |
-| **Profit Factor** | Gross profit / Gross loss |
-| **Max Drawdown** | Worst losing streak |
-| **Decision Quality** | Does the LLM give consistent, logical reasoning? |
+| Total Trades | Number of completed trades |
+| Wins / Losses | Trades that hit TP vs SL |
+| Win Rate | Wins / Total × 100 |
+| Total Pips | Sum of all trade pips |
+| Avg Pips | Total Pips / Total Trades |
+| Best Trade | Highest pips in a single trade |
+| Worst Trade | Lowest pips in a single trade |
 
----
+## Extending the Project
 
-## 8. Constraints & Rules
+### Add a new data source:
+1. Place `.parquet` file in `data/` directory
+2. Must have columns: `timestamp`, `open`, `high`, `low`, `close`, `volume`
+3. Select it from the dashboard dropdown
 
-- **No indicators** — Pure price action only
-- **No ML training** — LLM is the brain, no fine-tuning
-- **Offline data** — Using historical parquet files, not live feed
-- **M1 timeframe** — 1-minute candles for precision
-- **Single pair** — EUR/USD only (expandable later)
-- **Reproducible** — Same data + same prompt = same analysis
+### Use a different LLM provider:
+1. Change `base_url` in config to your OpenAI-compatible endpoint
+2. Change `model` to your model name
+3. Ensure the API follows OpenAI chat completions format
 
----
-
-## 9. Next Steps
-
-- [ ] Confirm Kilo Gateway API details (endpoint, model, auth)
-- [ ] Build data_loader.py
-- [ ] Build formatter.py
-- [ ] Build llm_client.py
-- [ ] Build main.py (orchestrator)
-- [ ] Run on February data
-- [ ] Review results
-- [ ] Run on March data
-- [ ] Final performance report
+### Add more agents to Round Table:
+1. Edit `AGENTS_META` in `dashboard.html` (add agent_6, agent_7, etc.)
+2. Update `numAgents` select options
+3. The council code automatically handles any number of agents
