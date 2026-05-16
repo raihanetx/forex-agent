@@ -30,6 +30,8 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 .sidebar-header span { font-size: 11px; color: #00d4ff; font-weight: 600; }
 .sidebar-toggle { background: none; border: 1px solid #2a2a4a; color: #888; padding: 3px 8px; cursor: pointer; border-radius: 4px; font-size: 11px; }
 .sidebar-toggle:hover { color: #00d4ff; border-color: #00d4ff; }
+.sidebar-expand { position: fixed; left: 0; top: 52px; z-index: 100; background: #16213e; border: 1px solid #2a2a4a; color: #00d4ff; padding: 6px 10px; cursor: pointer; border-radius: 0 4px 4px 0; font-size: 12px; display: none; }
+.sidebar-expand:hover { background: #1a1a2e; }
 .section { padding: 12px 14px; border-bottom: 1px solid #1a1a24; }
 .section-title { font-size: 10px; color: #556; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; font-weight: 600; }
 .field { margin-bottom: 10px; }
@@ -264,6 +266,9 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
     </div>
   </div>
 
+  <!-- Floating expand button (visible when sidebar is hidden) -->
+  <button class="sidebar-expand" id="sidebarExpand" onclick="toggleSidebar()">▶ Settings</button>
+
   <!-- ═══ CENTER: MEETING FEED ═══ -->
   <div class="feed-area">
     <div class="progress"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
@@ -321,11 +326,12 @@ const AGENTS_META = [
 function toggleSidebar() {
   const sb = document.getElementById("sidebar");
   const btn = document.getElementById("sidebarToggle");
+  const expand = document.getElementById("sidebarExpand");
   sb.classList.toggle("collapsed");
   if (sb.classList.contains("collapsed")) {
-    btn.textContent = "▶ Show";
+    expand.style.display = "block";
   } else {
-    btn.textContent = "◀ Hide";
+    expand.style.display = "none";
   }
 }
 
