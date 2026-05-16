@@ -180,8 +180,11 @@ class TradingCouncil:
                 "reasoning": reasoning.strip(),
                 "model": data.get("model", model),
             }
+        except requests.exceptions.Timeout:
+            self.log(f"⏰ TIMEOUT: {model} did not respond in 120s — skipping this agent", "error")
+            return None
         except Exception as e:
-            self.log(f"LLM call failed ({model}): {e}", "error")
+            self.log(f"❌ ERROR: {model} — {e}", "error")
             return None
 
     def parse_position(self, content):
@@ -252,7 +255,7 @@ class TradingCouncil:
         self.log("━" * 50, "council")
 
         for agent in self.agents:
-            self.log(f"  🤖 Agent {agent['num']} analyzing... [{agent['model']}]", "agent_vote")
+            self.log(f"🤖 Agent {agent['num']} [{agent['model']}] — waiting for response...", "loading")
 
             prompt = OPENING_STATEMENT_PROMPT.format(
                 agent_num=agent["num"],
@@ -345,7 +348,7 @@ class TradingCouncil:
                 vote_summary=vote_summary,
             )
 
-            self.log(f"  🤖 Agent {agent['num']} [{agent['model']}] discussing...", "debate")
+            self.log(f"🤖 Agent {agent['num']} [{agent['model']}] — waiting for response...", "loading")
 
             response = self.call_llm(agent, prompt, max_tokens=600)
 

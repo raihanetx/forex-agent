@@ -215,8 +215,11 @@ class TradingAgent:
                 "usage": data.get("usage", {}),
             }
         
+        except requests.exceptions.Timeout:
+            self.log(f"⏰ TIMEOUT: {self.config.get('model', 'LLM')} did not respond in 120s", "error")
+            return None
         except Exception as e:
-            self.log(f"LLM call failed: {e}", "error")
+            self.log(f"❌ ERROR: {e}", "error")
             return None
     
     def parse_decision(self, llm_response):
@@ -345,6 +348,7 @@ class TradingAgent:
             else:
                 # ── Single Agent Mode ──
                 prompt = self.build_prompt(window, row["close"])
+                self.log(f"⏳ Waiting for {self.config.get('model', 'LLM')} response...", "loading")
                 llm_response = self.call_llm(prompt)
                 decision = self.parse_decision(llm_response)
                 
