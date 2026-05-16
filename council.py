@@ -16,6 +16,7 @@ FLOW:
 import requests
 import json
 import time
+import threading
 
 
 # ─── System Prompt (shared by ALL agents) ───────────────────────────
@@ -100,6 +101,7 @@ class TradingCouncil:
         self.debate_rounds = config.get("debate_rounds", 1)
         self.log_callback = None
         self.last_debate = None
+        self.is_running = True  # Set to False to cancel
 
         # Build agent list from selected_agents + their models
         selected = config.get("selected_agents", [])
@@ -146,46 +148,67 @@ class TradingCouncil:
         return "\n".join(lines)
 
     def call_llm(self, agent, user_prompt, max_tokens=500):
-        """Call LLM API. Same system prompt for ALL agents — only the model differs."""
+        """Call LLM API. Cancellable — checks is_running while waiting."""
         model = agent["model"]
-        try:
-            resp = requests.post(
-                self.config["base_url"],
-                headers={
-                    "Authorization": f"Bearer {self.config['api_key']}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": SHARED_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "max_tokens": max_tokens,
-                    "temperature": self.config.get("temperature", 0.3),
-                },
-                timeout=120,
-            )
-            if resp.status_code != 200:
-                self.log(f"API error ({model}): {resp.status_code}", "error")
+        result = [None]
+        error = [None]
+
+        def _do_request():
+            try:
+                resp = requests.post(
+                    self.config["base_url"],
+                    headers={
+                        "Authorization": f"Bearer {self.config['api_key']}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": SHARED_SYSTEM_PROMPT},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "max_tokens": max_tokens,
+                        "temperature": self.config.get("temperature", 0.3),
+                    },
+                    timeout=120,
+                )
+                if resp.status_code != 200:
+                    error[0] = f"API error ({model}): {resp.status_code}"
+                    return
+                data = resp.json()
+                message = data["choices"][0]["message"]
+                content = message.get("content", "") or ""
+                reasoning = message.get("reasoning", "") or ""
+                if not content.strip() and reasoning:
+                    content = reasoning
+                result[0] = {
+                    "content": content.strip(),
+                    "reasoning": reasoning.strip(),
+                    "model": data.get("model", model),
+                }
+            except requests.exceptions.Timeout:
+                error[0] = "TIMEOUT"
+            except Exception as e:
+                error[0] = str(e)
+
+        thread = threading.Thread(target=_do_request, daemon=True)
+        thread.start()
+
+        # Wait but check is_running every second
+        while thread.is_alive():
+            if not self.is_running:
+                self.log("⏹ Cancelled — stopping API call", "system")
                 return None
-            data = resp.json()
-            message = data["choices"][0]["message"]
-            content = message.get("content", "") or ""
-            reasoning = message.get("reasoning", "") or ""
-            if not content.strip() and reasoning:
-                content = reasoning
-            return {
-                "content": content.strip(),
-                "reasoning": reasoning.strip(),
-                "model": data.get("model", model),
-            }
-        except requests.exceptions.Timeout:
-            self.log(f"⏰ TIMEOUT: {model} did not respond in 120s — skipping this agent", "error")
+            thread.join(timeout=1)
+
+        if error[0]:
+            if error[0] == "TIMEOUT":
+                self.log(f"⏰ TIMEOUT: {model} did not respond in 120s", "error")
+            else:
+                self.log(f"❌ ERROR ({model}): {error[0]}", "error")
             return None
-        except Exception as e:
-            self.log(f"❌ ERROR: {model} — {e}", "error")
-            return None
+
+        return result[0]
 
     def parse_position(self, content):
         """Parse POSITION or FINAL_VOTE from response text."""

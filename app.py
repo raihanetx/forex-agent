@@ -184,6 +184,8 @@ def stop_agent():
     if agent:
         agent.is_running = False
         agent.is_paused = False
+        if agent.council:
+            agent.council.is_running = False
         log_callback("⏹ Stopped", "system")
         return jsonify({"status": "stopped"})
     return jsonify({"error": "No agent"}), 400

@@ -12,6 +12,7 @@ import requests
 import json
 import os
 import time
+import threading
 from datetime import datetime
 from council import TradingCouncil
 
@@ -172,55 +173,74 @@ class TradingAgent:
         return "\n".join(lines)
     
     def call_llm(self, prompt):
-        """Call Kilo Gateway API and return parsed response."""
-        try:
-            resp = requests.post(
-                self.config["base_url"],
-                headers={
-                    "Authorization": f"Bearer {self.config['api_key']}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.config["model"],
-                    "messages": [
-                        {"role": "system", "content": "You are a precise Forex trading analyst. Follow the output format exactly."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "max_tokens": self.config["max_tokens"],
-                    "temperature": self.config["temperature"],
-                },
-                timeout=120,
-            )
-            
-            if resp.status_code != 200:
-                self.log(f"API error: {resp.status_code} - {resp.text}", "error")
+        """Call Kilo Gateway API. Cancellable — checks is_running while waiting."""
+        result = [None]
+        error = [None]
+
+        def _do_request():
+            try:
+                resp = requests.post(
+                    self.config["base_url"],
+                    headers={
+                        "Authorization": f"Bearer {self.config['api_key']}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": self.config["model"],
+                        "messages": [
+                            {"role": "system", "content": "You are a precise Forex trading analyst. Follow the output format exactly."},
+                            {"role": "user", "content": prompt},
+                        ],
+                        "max_tokens": self.config["max_tokens"],
+                        "temperature": self.config["temperature"],
+                    },
+                    timeout=120,
+                )
+
+                if resp.status_code != 200:
+                    error[0] = f"API error: {resp.status_code} - {resp.text}"
+                    return
+
+                data = resp.json()
+                choice = data["choices"][0]
+                message = choice["message"]
+
+                content = message.get("content", "") or ""
+                reasoning = message.get("reasoning", "") or ""
+
+                if not content.strip() and reasoning:
+                    content = reasoning
+
+                result[0] = {
+                    "content": content.strip(),
+                    "reasoning": reasoning.strip(),
+                    "model": data.get("model", "unknown"),
+                    "usage": data.get("usage", {}),
+                }
+            except requests.exceptions.Timeout:
+                error[0] = "TIMEOUT"
+            except Exception as e:
+                error[0] = str(e)
+
+        thread = threading.Thread(target=_do_request, daemon=True)
+        thread.start()
+
+        # Wait for response, but check is_running every second
+        while thread.is_alive():
+            if not self.is_running:
+                # User pressed stop — abandon the thread and return None
+                self.log("⏹ Cancelled — stopping API call", "system")
                 return None
-            
-            data = resp.json()
-            choice = data["choices"][0]
-            message = choice["message"]
-            
-            # Get content and reasoning
-            content = message.get("content", "") or ""
-            reasoning = message.get("reasoning", "") or ""
-            
-            # Some models put response in reasoning when content is empty
-            if not content.strip() and reasoning:
-                content = reasoning
-            
-            return {
-                "content": content.strip(),
-                "reasoning": reasoning.strip(),
-                "model": data.get("model", "unknown"),
-                "usage": data.get("usage", {}),
-            }
-        
-        except requests.exceptions.Timeout:
-            self.log(f"⏰ TIMEOUT: {self.config.get('model', 'LLM')} did not respond in 120s", "error")
+            thread.join(timeout=1)
+
+        if error[0]:
+            if error[0] == "TIMEOUT":
+                self.log(f"⏰ TIMEOUT: {self.config.get('model', 'LLM')} did not respond in 120s", "error")
+            else:
+                self.log(f"❌ ERROR: {error[0]}", "error")
             return None
-        except Exception as e:
-            self.log(f"❌ ERROR: {e}", "error")
-            return None
+
+        return result[0]
     
     def parse_decision(self, llm_response):
         """Parse BUY/SELL/HOLD from LLM response text."""
