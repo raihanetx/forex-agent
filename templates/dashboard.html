@@ -24,7 +24,10 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 .main { display: flex; height: calc(100vh - 48px); }
 
 /* ─── Left Sidebar ─── */
-.sidebar { width: 280px; min-width: 280px; background: #111118; border-right: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow-y: auto; }
+.sidebar { width: 280px; min-width: 280px; background: #111118; border-right: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow-y: auto; transition: width 0.3s, min-width 0.3s; position: relative; }
+.sidebar.collapsed { width: 0; min-width: 0; overflow: hidden; }
+.sidebar-toggle { position: absolute; right: -28px; top: 8px; z-index: 10; background: #1a1a2e; border: 1px solid #2a2a4a; color: #888; padding: 4px 8px; cursor: pointer; border-radius: 0 4px 4px 0; font-size: 12px; transition: color 0.2s; }
+.sidebar-toggle:hover { color: #00d4ff; }
 .section { padding: 12px 14px; border-bottom: 1px solid #1a1a24; }
 .section-title { font-size: 10px; color: #556; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; font-weight: 600; }
 .field { margin-bottom: 10px; }
@@ -43,13 +46,13 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 
 /* Toggle */
 .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.toggle-row label { margin: 0; font-size: 11px; color: #aaa; }
-.toggle { position: relative; width: 36px; height: 18px; }
-.toggle input { opacity: 0; width: 0; height: 0; }
-.toggle .slider { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #333; border-radius: 18px; cursor: pointer; transition: 0.3s; }
-.toggle .slider:before { content: ""; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px; background: #888; border-radius: 50%; transition: 0.3s; }
+.toggle-row label { margin: 0; font-size: 11px; color: #aaa; cursor: pointer; }
+.toggle { position: relative; width: 36px; height: 20px; cursor: pointer; }
+.toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle .slider { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #333; border-radius: 20px; cursor: pointer; transition: 0.3s; }
+.toggle .slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 2px; bottom: 2px; background: #888; border-radius: 50%; transition: 0.3s; }
 .toggle input:checked + .slider { background: #0a3d4d; }
-.toggle input:checked + .slider:before { transform: translateX(18px); background: #00d4ff; }
+.toggle input:checked + .slider:before { transform: translateX(16px); background: #00d4ff; }
 
 /* Agent cards */
 .agent-card { background: #1a1a24; border: 1px solid #2a2a4a; border-radius: 6px; padding: 8px; margin-bottom: 6px; }
@@ -166,6 +169,7 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 
   <!-- ═══ LEFT SIDEBAR: ALL SETTINGS ═══ -->
   <div class="sidebar" id="sidebar">
+    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Minimize sidebar">◀</button>
 
     <!-- API Key -->
     <div class="section">
@@ -196,8 +200,8 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
     <div class="section">
       <div class="section-title">🏛️ Round Table Mode</div>
       <div class="toggle-row">
-        <label>Enable Round Table</label>
-        <div class="toggle"><input type="checkbox" id="useCouncil" checked><span class="slider"></span></div>
+        <label for="useCouncil">Enable Round Table</label>
+        <div class="toggle"><input type="checkbox" id="useCouncil" checked><span class="slider" onclick="document.getElementById('useCouncil').click()"></span></div>
       </div>
       <div id="councilSettings">
         <div class="field">
@@ -309,6 +313,13 @@ const AGENTS_META = [
 ];
 
 // ═══ Init ═══
+function toggleSidebar() {
+  const sb = document.getElementById("sidebar");
+  const btn = document.getElementById("sidebarToggle");
+  sb.classList.toggle("collapsed");
+  btn.textContent = sb.classList.contains("collapsed") ? "▶" : "◀";
+}
+
 fetch("/api/config").then(r => r.json()).then(cfg => {
   const saved = JSON.parse(localStorage.getItem("forex_config") || "{}");
   const merged = {...cfg, ...saved};
