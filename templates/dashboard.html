@@ -200,9 +200,9 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
       </div>
     </div>
 
-    <!-- Default Model -->
-    <div class="section">
-      <div class="section-title">🤖 Default Model (Single Mode)</div>
+    <!-- Default Model (only for Single Mode) -->
+    <div class="section" id="singleModelSection">
+      <div class="section-title">🤖 Model (Single Mode)</div>
       <div id="modelList" class="field" style="max-height:80px;overflow-y:auto;background:#1a1a24;border-radius:5px;padding:4px">
         <div style="font-size:10px;color:#556;padding:4px">kilo-auto/free</div>
       </div>
@@ -210,12 +210,12 @@ body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0f; color: 
 
     <!-- Council Mode -->
     <div class="section">
-      <div class="section-title">🏛️ Round Table Mode</div>
+      <div class="section-title">🏛️ Mode</div>
       <div class="toggle-row">
-        <label for="useCouncil">Enable Round Table</label>
-        <div class="toggle"><input type="checkbox" id="useCouncil" checked><span class="slider" onclick="document.getElementById('useCouncil').click()"></span></div>
+        <label for="useCouncil">Round Table (multi-agent)</label>
+        <div class="toggle"><input type="checkbox" id="useCouncil"><span class="slider" onclick="document.getElementById('useCouncil').click()"></span></div>
       </div>
-      <div id="councilSettings">
+      <div id="councilSettings" style="display:none">
         <div class="field">
           <label>Number of Agents</label>
           <select id="numAgents" onchange="onNumAgentsChange()">
@@ -351,6 +351,7 @@ fetch("/api/config").then(r => r.json()).then(cfg => {
   if (merged.num_agents) document.getElementById("numAgents").value = merged.num_agents;
   if (merged.debate_rounds !== undefined) document.getElementById("debateRounds").value = merged.debate_rounds;
   document.getElementById("councilSettings").style.display = merged.use_council ? "block" : "none";
+  document.getElementById("singleModelSection").style.display = merged.use_council ? "none" : "block";
   updateMode();
   loadDataFiles();
   renderAgentModels(merged.agent_models || {});
@@ -371,6 +372,7 @@ fetch("/api/config").then(r => r.json()).then(cfg => {
 // ═══ Events ═══
 document.getElementById("useCouncil").addEventListener("change", function() {
   document.getElementById("councilSettings").style.display = this.checked ? "block" : "none";
+  document.getElementById("singleModelSection").style.display = this.checked ? "none" : "block";
   updateMode();
   postConfig({use_council: this.checked});
 });
@@ -470,20 +472,41 @@ function postConfig(data) {
 // ═══ Controls ═══
 function startAgent() {
   const df = document.getElementById("dataFile").value;
-  if (!df) return alert("Select data file");
-  const numAgents = parseInt(document.getElementById("numAgents").value);
-  const selected = AGENTS_META.slice(0, numAgents).map(a => a.id);
-  postConfig({
-    model: currentModel, window_size: parseInt(document.getElementById("windowSize").value),
-    use_council: document.getElementById("useCouncil").checked,
-    num_agents: numAgents,
-    selected_agents: selected,
-    debate_rounds: parseInt(document.getElementById("debateRounds").value),
-    agent_models: getAgentModels(),
-  });
-  // Clear feed for fresh start
+  if (!df) return alert("Select a data file first");
+
+  const isCouncil = document.getElementById("useCouncil").checked;
+
+  if (isCouncil) {
+    const numAgents = parseInt(document.getElementById("numAgents").value);
+    const selected = AGENTS_META.slice(0, numAgents).map(a => a.id);
+    const agentModels = getAgentModels();
+
+    // Check all agents have a model selected
+    for (const id of selected) {
+      if (!agentModels[id]) return alert(`Select a model for Agent ${id.split('_')[1]}`);
+    }
+
+    postConfig({
+      window_size: parseInt(document.getElementById("windowSize").value),
+      use_council: true,
+      num_agents: numAgents,
+      selected_agents: selected,
+      debate_rounds: parseInt(document.getElementById("debateRounds").value),
+      agent_models: agentModels,
+    });
+  } else {
+    if (!currentModel) return alert("Select a model first");
+    postConfig({
+      model: currentModel,
+      window_size: parseInt(document.getElementById("windowSize").value),
+      use_council: false,
+    });
+  }
+
+  // Clear feed
   document.getElementById("feed").innerHTML = "";
   lastLogCount = 0;
+
   fetch("/api/start", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({
     data_file: df,
     max_candles: document.getElementById("maxCandles").value ? parseInt(document.getElementById("maxCandles").value) : null,
